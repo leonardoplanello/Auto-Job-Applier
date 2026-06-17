@@ -1,0 +1,8 @@
+__pycache__/
+.vscode/
+.idea/
+.venv/
+/user_data/
+/frontend/dist/
+/frontend/node_modules/
+*.log
