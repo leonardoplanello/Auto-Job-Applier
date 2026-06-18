@@ -23,8 +23,8 @@ status: str = "idle"               # idle | running | paused | waiting_user | st
 previous_status: str = "running"
 mode: str = "review"               # review | auto (active execution mode)
 current_job_id: Optional[int] = None
+current_job_task: Optional[asyncio.Task] = None
 active_page: Optional[Page] = None
-abort_current_job: bool = False
 stats: Dict[str, int] = {"found": 0, "applied": 0, "skipped": 0, "failed": 0, "popups": 0}
 historical_stats: Optional[Dict[str, int]] = None
 
@@ -827,6 +827,52 @@ async def check_if_already_applied(page: Page) -> bool:
     return False
 
 
+async def check_if_no_longer_accepting(page: Page) -> bool:
+    """
+    Checks if the job is no longer accepting applications.
+    """
+    closed_phrases = [
+        "no longer accepting applications",
+        "não aceita mais candidaturas",
+        "não estão mais aceitando candidaturas",
+        "não está mais aceitando candidaturas",
+        "ya no se aceptan solicitudes",
+        "ya no acepta solicitudes",
+        "n'accepte plus de candidatures",
+        "nimmt keine bewerbungen mehr an",
+        "no longer accepting"
+    ]
+    
+    container_selectors = [
+        ".artdeco-inline-feedback",
+        ".jobs-unified-top-card", 
+        ".jobs-details", 
+        ".jobs-search__job-details--container", 
+        "div.jobs-details__main-content",
+        "main", 
+        "#main",
+        "div.scaffold-layout__detail",
+        ".jobs-box"
+    ]
+    
+    for sel in container_selectors:
+        loc = page.locator(sel)
+        try:
+            count = await loc.count()
+            for i in range(count):
+                el = loc.nth(i)
+                if await el.is_visible():
+                    text = await el.inner_text()
+                    text_lower = text.lower()
+                    for phrase in closed_phrases:
+                        if phrase in text_lower:
+                            return True
+        except Exception:
+            pass
+            
+    return False
+
+
 async def apply_to_job(
     page: Page,
     job: Job,
@@ -917,8 +963,9 @@ async def apply_to_job(
         
         # Check applied indicators too
         already_applied_check = await check_if_already_applied(page)
+        no_longer_accepting_check = await check_if_no_longer_accepting(page)
                 
-        if already_applied_check or await easy_apply_btn.count() > 0:
+        if already_applied_check or no_longer_accepting_check or await easy_apply_btn.count() > 0:
             log_event(
                 session_id, "warning", "apply",
                 "Navigation to job detail page timed out, but page content is present. Proceeding...",
@@ -938,6 +985,7 @@ async def apply_to_job(
 
     # Check if already applied on LinkedIn page (e.g. banner, message or button is not Easy Apply)
     already_applied = False
+    no_longer_accepting = False
     easy_apply_selectors = [
         "button.jobs-apply-button",
         "button.jobs-apply-button--top-card",
@@ -966,6 +1014,10 @@ async def apply_to_job(
         if already_applied:
             break
             
+        no_longer_accepting = await check_if_no_longer_accepting(page)
+        if no_longer_accepting:
+            break
+            
         # Check if Easy Apply is visible
         easy_apply_btn = page.locator(easy_apply_selector).first
         try:
@@ -978,6 +1030,18 @@ async def apply_to_job(
 
     if await check_linkedin_limit(page):
         raise LinkedInLimitReachedException()
+
+    if no_longer_accepting:
+        log_event(
+            session_id, "info", "apply",
+            f"Job is no longer accepting applications. Skipping — {job.title} @ {job.company}",
+            company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
+        )
+        job.status = "skipped"
+        job.skip_reason = "No longer accepting applications"
+        db.commit()
+        stats["skipped"] += 1
+        return False
 
     if already_applied:
         log_event(
@@ -1208,7 +1272,7 @@ async def apply_to_job(
         
         # Handle LinkedIn 'Job search safety reminder' popup if it appears
         try:
-            continue_btn = page.locator("button:has-text('Continue applying'), button:has-text('Continuar candidatura'), button:has-text('Continuar aplicando')").first
+            continue_btn = page.locator("button:has-text('Continue applying'), button:has-text('Continuar candidatura'), button:has-text('Continuar a candidatura'), button:has-text('Continuar aplicando'), button:has-text('Continuar a candidatar-se')").first
             review_btn = page.locator("button:has-text('Review job post'), button:has-text('Revisar vaga'), button:has-text('Rever vaga')").first
             
             if await continue_btn.count() > 0 and await continue_btn.is_visible():
@@ -1222,11 +1286,20 @@ async def apply_to_job(
             elif await review_btn.count() > 0 and await review_btn.is_visible():
                 log_event(
                     session_id, "info", "apply",
-                    "Job search safety reminder detected. Clicking 'Review job post' to proceed.",
+                    "Job search safety reminder detected. Finding primary button to continue.",
                     company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
                 )
-                await review_btn.click()
-                await page.wait_for_timeout(random.randint(1500, 2500))
+                # Instead of clicking review job post, click the primary button in the dialog which is "Continue"
+                primary_btn = page.locator("div[role='dialog'] button.artdeco-button--primary").first
+                if await primary_btn.count() > 0 and await primary_btn.is_visible():
+                    await primary_btn.click()
+                    await page.wait_for_timeout(random.randint(1500, 2500))
+                else:
+                    # Fallback to any button that contains 'Continuar'
+                    fallback_btn = page.locator("button.artdeco-button--primary:has-text('Continuar')").first
+                    if await fallback_btn.count() > 0 and await fallback_btn.is_visible():
+                        await fallback_btn.click()
+                        await page.wait_for_timeout(random.randint(1500, 2500))
         except Exception as e:
             log_event(
                 session_id, "warning", "apply",
@@ -1288,11 +1361,6 @@ async def apply_to_job(
     try:
         steps_safety = 0
         while steps_safety < 15: # Loop protection
-            global abort_current_job
-            if abort_current_job:
-                abort_current_job = False
-                raise SkipJobException("Skipped manually from dashboard")
-
             # Check if modal is closed prematurely
             
             steps_safety += 1
@@ -1771,7 +1839,7 @@ async def apply_to_job(
         stats["skipped"] += 1
         await close_easy_apply_dialog(page)
         return False
-    except (StopBotException, BrowserClosedException, asyncio.CancelledError) as e:
+    except (StopBotException, BrowserClosedException) as e:
         log_event(
             session_id, "info", "apply",
             f"Application interrupted (stopped/browser closed). Saving job as queued and prioritizing. — {job.title} @ {job.company}",
@@ -1799,22 +1867,6 @@ async def apply_to_job(
         await close_easy_apply_dialog(page)
         return False
     except Exception as e:
-        global abort_current_job
-        if abort_current_job:
-            abort_current_job = False
-            log_event(
-                session_id, "info", "apply",
-                "Job skipped manually from dashboard.",
-                company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
-            )
-            job.status = "skipped"
-            job.skip_reason = "Skipped manually from dashboard"
-            job.priority = 0
-            db.commit()
-            stats["skipped"] += 1
-            await close_easy_apply_dialog(page)
-            return False
-
         exc_name = type(e).__name__
         if exc_name == "ClosePopupException":
             log_event(
@@ -1928,9 +1980,22 @@ async def process_queue(page: Page, db: Session, bot_settings: Dict[str, Any], i
             # Applying state
             await update_status("applying")
             try:
-                await apply_to_job(page, job, session_id, db, bot_settings)
+                global current_job_task
+                current_job_task = asyncio.create_task(apply_to_job(page, job, session_id, db, bot_settings))
+                await current_job_task
+            except asyncio.CancelledError:
+                # Task was cancelled to immediately skip the job
+                log_event(
+                    session_id, "info", "apply",
+                    "Job skipped manually from dashboard.",
+                    company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
+                )
+                stats["skipped"] += 1
+                await close_easy_apply_dialog(page)
             except LinkedInLimitReachedException:
                 raise
+            finally:
+                current_job_task = None
             await broadcast_status()
             
             # Prevent rapid operations spam (Anti-detection)

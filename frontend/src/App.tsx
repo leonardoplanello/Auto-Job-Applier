@@ -9,9 +9,10 @@ import { Applications } from './pages/Applications';
 import { QABank } from './pages/QABank';
 import { Logs } from './pages/Logs';
 import { Settings } from './pages/Settings';
+import { Analytics } from './pages/Analytics';
 import { 
   LayoutDashboard, Search, Briefcase, CheckCircle2, MessageSquare, 
-  Terminal, Settings as SettingsIcon, Power
+  Terminal, Settings as SettingsIcon, Power, Network
 } from 'lucide-react';
 import api from './lib/api';
 import { useBot, type PageName } from './hooks/useBot';
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
       case 'qa': return <QABank />;
       case 'logs': return <Logs />;
       case 'settings': return <Settings />;
+      case 'analytics': return <Analytics />;
       default: return <Dashboard />;
     }
   };
@@ -55,6 +57,7 @@ export const App: React.FC = () => {
     { name: 'applications', label: 'Applications', icon: <CheckCircle2 className="w-5 h-5" /> },
     { name: 'qa', label: 'Q&A Bank', icon: <MessageSquare className="w-5 h-5" /> },
     { name: 'logs', label: 'Logs & Sessions', icon: <Terminal className="w-5 h-5" /> },
+    { name: 'analytics', label: 'Flow Analytics', icon: <Network className="w-5 h-5" /> },
     { name: 'settings', label: 'Settings', icon: <SettingsIcon className="w-5 h-5" /> },
   ];
 

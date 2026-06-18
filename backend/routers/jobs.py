@@ -191,13 +191,9 @@ async def skip_job(job_id: int, payload: JobSkip, db: Session = Depends(get_db))
     # Check if this is the currently processing job
     from backend.bot import engine, popup_manager
     if engine.current_job_id == job.id:
-        engine.abort_current_job = True
         if popup_manager.active_popup:
             await popup_manager.resolve_popup("__skip_job__", False)
-        elif engine.active_page and not engine.active_page.is_closed():
-            try:
-                await engine.active_page.goto("about:blank")
-            except Exception:
-                pass
+        elif engine.current_job_task and not engine.current_job_task.done():
+            engine.current_job_task.cancel()
             
     return job

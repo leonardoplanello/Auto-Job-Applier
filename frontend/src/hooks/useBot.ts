@@ -61,7 +61,7 @@ interface BotStats {
   popups: number;
 }
 
-export type PageName = 'dashboard' | 'search' | 'jobs' | 'applications' | 'qa' | 'logs' | 'settings';
+export type PageName = 'dashboard' | 'search' | 'jobs' | 'applications' | 'qa' | 'logs' | 'settings' | 'analytics';
 
 interface BotStore {
   status: string;

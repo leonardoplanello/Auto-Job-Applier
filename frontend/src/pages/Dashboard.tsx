@@ -6,7 +6,7 @@ import api from '../lib/api';
 import { 
   Briefcase, CheckCircle2, AlertCircle, XCircle, 
   HelpCircle, Play, Pause, Square, RefreshCw, Layers,
-  ExternalLink, GripVertical, ListPlus, Zap, X
+  ExternalLink, GripVertical, ListPlus, Zap, X, Clock
 } from 'lucide-react';
 
 interface SearchCriteria {
@@ -542,7 +542,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard
           title="Discovered"
           value={stats.found}
@@ -551,6 +551,16 @@ export const Dashboard: React.FC = () => {
           onClick={() => {
             setCurrentPage('jobs');
             setJobStatusFilter('discovered');
+          }}
+        />
+        <StatCard
+          title="Pending"
+          value={queuedCount}
+          icon={<Clock className="w-5 h-5" />}
+          colorClass="text-purple-600 bg-purple-50 border-purple-200"
+          onClick={() => {
+            setCurrentPage('jobs');
+            setJobStatusFilter('queued');
           }}
         />
         <StatCard
