@@ -628,6 +628,11 @@ export const Jobs: React.FC = () => {
                       <p className="text-[10px] text-slate-500 mt-0.5 truncate">
                         {job.location || 'Not specified'} {job.remote ? '(Remote)' : ''} &bull; {new Date(job.discovered_at).toLocaleDateString()}
                       </p>
+                      {job.skip_reason && (
+                        <p className="text-[10px] text-red-600 mt-0.5 truncate bg-red-50 px-1.5 py-0.5 rounded border border-red-100 self-start max-w-full">
+                          <span className="font-semibold">{job.status === 'failed' ? 'Failure reason:' : 'Skip reason:'}</span> {job.skip_reason}
+                        </p>
+                      )}
                     </div>
                   </div>
 

@@ -520,9 +520,16 @@ export const Dashboard: React.FC = () => {
 
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Queue Status</span>
-                <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-primary-50 text-primary-700 border border-primary-200 capitalize">
-                  {currentJob.status}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-primary-50 text-primary-700 border border-primary-200 capitalize">
+                    {currentJob.status}
+                  </span>
+                  {currentJob.skip_reason && (
+                    <span className="text-[10px] text-red-600 truncate bg-red-50 px-1.5 py-0.5 rounded border border-red-100 max-w-full" title={currentJob.skip_reason}>
+                      <span className="font-semibold">{currentJob.status === 'failed' ? 'Failure reason:' : 'Skip reason:'}</span> {currentJob.skip_reason}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {currentJob.description && (
