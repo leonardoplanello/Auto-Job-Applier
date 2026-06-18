@@ -5,7 +5,7 @@ import { useBot, type Job } from '../hooks/useBot';
 import {
   Check, X, Search, ExternalLink, Briefcase, Upload,
   Trash2, Ban, ListPlus, Zap, CheckSquare, Square,
-  AlertTriangle, Loader2, LayoutGrid, List, GripVertical
+  AlertTriangle, Loader2, LayoutGrid, List, GripVertical, FileText
 } from 'lucide-react';
 
 type BulkAction = 'skip' | 'approve' | 'prioritize' | 'delete' | 'blacklist';
@@ -34,6 +34,8 @@ export const Jobs: React.FC = () => {
     jobStatusFilter: statusFilter,
     setJobStatusFilter: setStatusFilter,
     jobsRefreshCounter,
+    setAppSearchQuery,
+    setCurrentPage,
   } = useBot();
 
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -46,26 +48,46 @@ export const Jobs: React.FC = () => {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const fetchJobs = async () => {
-    setIsLoading(true);
-    setSelectedIds(new Set());
+  const fetchJobs = async (isBackgroundRefresh = false) => {
+    if (!isBackgroundRefresh) {
+      setIsLoading(true);
+      setSelectedIds(new Set());
+    }
     try {
       const res = await api.get('/api/jobs', {
         params: { status: statusFilter === 'all' ? undefined : statusFilter, limit: 1000 },
       });
       setJobs(res.data);
+      
+      // If doing a background refresh, keep selectedIds but remove any that no longer exist in the new data
+      if (isBackgroundRefresh) {
+        setSelectedIds(prev => {
+          const validIds = new Set(res.data.map((j: Job) => j.id));
+          const next = new Set<number>();
+          prev.forEach(id => {
+            if (validIds.has(id)) next.add(id);
+          });
+          return next;
+        });
+      }
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
     } finally {
-      setIsLoading(false);
+      if (!isBackgroundRefresh) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     setSelectedStatus('');
     setSelectedSkipReason('');
-    fetchJobs();
-  }, [statusFilter, jobsRefreshCounter]);
+    fetchJobs(false);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    fetchJobs(true);
+  }, [jobsRefreshCounter]);
 
   const handleApprove = async (jobId: number) => {
     try {
@@ -260,6 +282,8 @@ export const Jobs: React.FC = () => {
 
   const uniqueCompanies = confirm ? [...new Set(confirm.jobs.map(j => j.company))] : [];
 
+  const hasAppliedJobs = selectedJobs.some(j => j.status === 'applied');
+
   // Portal-rendered toolbar — escapes the overflow:auto container in App.tsx
   const toolbar = (
     <div
@@ -278,8 +302,9 @@ export const Jobs: React.FC = () => {
           </div>
           <div className="w-px h-6 bg-slate-700 hidden sm:block" />
           <div className="flex flex-wrap gap-2 flex-1">
-            {(Object.entries(BULK_ACTION_META) as [BulkAction, typeof BULK_ACTION_META[BulkAction]][]).map(
-              ([action, meta]) => (
+            {(Object.entries(BULK_ACTION_META) as [BulkAction, typeof BULK_ACTION_META[BulkAction]][])
+              .filter(([action]) => !hasAppliedJobs || action === 'delete')
+              .map(([action, meta]) => (
                 <button
                   key={action}
                   onClick={() => initiateBulkAction(action)}
@@ -449,11 +474,11 @@ export const Jobs: React.FC = () => {
                 </div>
               )}
 
-              {(statusFilter === 'skipped' || statusFilter === 'all') && uniqueSkipReasons.length > 0 && (
+              {(statusFilter === 'skipped' || statusFilter === 'failed' || statusFilter === 'all') && uniqueSkipReasons.length > 0 && (
                 <div className="flex flex-col gap-1 min-w-[170px]">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Skip Reason</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">{statusFilter === 'failed' ? 'Failure Reason' : 'Skip Reason'}</span>
                   <select value={selectedSkipReason} onChange={e => setSelectedSkipReason(e.target.value)} className="w-full glass-input text-xs py-1.5 cursor-pointer bg-white">
-                    <option value="">All Skip Reasons</option>
+                    <option value="">{statusFilter === 'failed' ? 'All Failure Reasons' : 'All Skip Reasons'}</option>
                     {uniqueSkipReasons.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
@@ -532,7 +557,7 @@ export const Jobs: React.FC = () => {
 
                     {job.skip_reason && (
                       <div className="p-2.5 bg-red-50 text-red-700 rounded-lg text-[10px] border border-red-200 mb-3 ml-7">
-                        <span className="font-bold block mb-0.5">Skip reason:</span>{job.skip_reason}
+                        <span className="font-bold block mb-0.5">{job.status === 'failed' ? 'Failure reason:' : 'Skip reason:'}</span> {job.skip_reason}
                       </div>
                     )}
                   </div>
@@ -558,6 +583,12 @@ export const Jobs: React.FC = () => {
                       <>
                         <button onClick={() => handleSkip(job.id)} className="flex-1 glass-btn-secondary py-1.5 text-xs text-red-600 hover:bg-red-50 border-red-100 cursor-pointer"><X className="w-3.5 h-3.5" /> Skip</button>
                         <button onClick={() => handleApprove(job.id)} className="flex-1 glass-btn-success py-1.5 text-xs cursor-pointer"><Check className="w-3.5 h-3.5" /> Queue Again</button>
+                      </>
+                    )}
+                    {job.status === 'applied' && (
+                      <>
+                        <button onClick={() => { setAppSearchQuery(job.company); setCurrentPage('applications'); }} className="flex-1 glass-btn-secondary py-1.5 text-xs text-primary-600 hover:bg-primary-50 border-primary-100 cursor-pointer"><FileText className="w-3.5 h-3.5" /> Details</button>
+                        <button onClick={() => setConfirm({ action: 'delete', jobs: [job] })} className="flex-1 glass-btn-secondary py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-100 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
                       </>
                     )}
                   </div>
@@ -624,6 +655,12 @@ export const Jobs: React.FC = () => {
                         <>
                           <button onClick={() => handleSkip(job.id)} title="Skip" className="glass-btn-secondary p-1.5 text-xs text-red-600 hover:bg-red-50 border-red-100 cursor-pointer"><X className="w-4 h-4" /></button>
                           <button onClick={() => handleApprove(job.id)} title="Queue Again" className="glass-btn-success p-1.5 text-xs cursor-pointer"><Check className="w-4 h-4" /></button>
+                        </>
+                      )}
+                      {job.status === 'applied' && (
+                        <>
+                          <button onClick={() => { setAppSearchQuery(job.company); setCurrentPage('applications'); }} title="Details" className="glass-btn-secondary p-1.5 text-xs text-primary-600 hover:bg-primary-50 border-primary-100 cursor-pointer"><FileText className="w-4 h-4" /></button>
+                          <button onClick={() => setConfirm({ action: 'delete', jobs: [job] })} title="Delete" className="glass-btn-secondary p-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-100 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
                         </>
                       )}
                     </div>

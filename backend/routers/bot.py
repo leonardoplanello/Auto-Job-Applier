@@ -31,12 +31,11 @@ async def start_bot_session(payload: BotStartPayload, db: Session = Depends(get_
     if engine.status not in ["idle", "stopped", "finished"]:
         raise HTTPException(status_code=400, detail="A bot session is already running.")
     
-    # Handle list of search IDs or single fallback
-    search_ids = payload.search_ids
-    if not search_ids and payload.search_id is not None:
-        search_ids = [payload.search_id]
-        
-    message = engine.start_bot(search_ids, payload.mode)
+    tasks = payload.tasks
+    if not tasks:
+        raise HTTPException(status_code=400, detail="No tasks specified. Please configure the Tasks Sequence.")
+
+    message = engine.start_bot(tasks, payload.mode)
     return {"message": message}
 
 @router.post("/pause")

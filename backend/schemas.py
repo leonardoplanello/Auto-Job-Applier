@@ -164,10 +164,15 @@ class SettingResponse(BaseModel):
 class SettingUpdate(BaseModel):
     value: str
 
-# Bot Operation Payload Schemas
+class BotTask(BaseModel):
+    type: str  # "process_queue" | "search"
+    target: Optional[str] = None  # "all" | "prioritized"
+    search_id: Optional[int] = None
+
 class BotStartPayload(BaseModel):
     search_id: Optional[int] = None
     search_ids: Optional[List[int]] = None
+    tasks: Optional[List[BotTask]] = None
     mode: str = "review"  # review | auto
 
 class BotAnswerPayload(BaseModel):

@@ -1,5 +1,5 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from backend.database import get_db
@@ -76,7 +76,7 @@ def export_jobs(
 # ─── Bulk Action Endpoints ────────────────────────────────────────────────────
 
 @router.post("/bulk/skip")
-def bulk_skip(payload: BulkJobAction, db: Session = Depends(get_db)):
+def bulk_skip(payload: BulkJobAction, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if not payload.job_ids:
         raise HTTPException(status_code=400, detail="No job IDs provided.")
     db.query(Job).filter(Job.id.in_(payload.job_ids)).update(
@@ -84,10 +84,12 @@ def bulk_skip(payload: BulkJobAction, db: Session = Depends(get_db)):
         synchronize_session=False
     )
     db.commit()
+    from backend.bot import engine
+    background_tasks.add_task(engine.broadcast_status)
     return {"updated": len(payload.job_ids)}
 
 @router.post("/bulk/approve")
-def bulk_approve(payload: BulkJobAction, db: Session = Depends(get_db)):
+def bulk_approve(payload: BulkJobAction, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if not payload.job_ids:
         raise HTTPException(status_code=400, detail="No job IDs provided.")
     db.query(Job).filter(Job.id.in_(payload.job_ids)).update(
@@ -95,10 +97,12 @@ def bulk_approve(payload: BulkJobAction, db: Session = Depends(get_db)):
         synchronize_session=False
     )
     db.commit()
+    from backend.bot import engine
+    background_tasks.add_task(engine.broadcast_status)
     return {"updated": len(payload.job_ids)}
 
 @router.post("/bulk/prioritize")
-def bulk_prioritize(payload: BulkJobAction, db: Session = Depends(get_db)):
+def bulk_prioritize(payload: BulkJobAction, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if not payload.job_ids:
         raise HTTPException(status_code=400, detail="No job IDs provided.")
     
@@ -108,10 +112,12 @@ def bulk_prioritize(payload: BulkJobAction, db: Session = Depends(get_db)):
         synchronize_session=False
     )
     db.commit()
+    from backend.bot import engine
+    background_tasks.add_task(engine.broadcast_status)
     return {"updated": len(payload.job_ids)}
 
 @router.post("/bulk/reorder")
-def bulk_reorder(payload: BulkJobAction, db: Session = Depends(get_db)):
+def bulk_reorder(payload: BulkJobAction, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if not payload.job_ids:
         raise HTTPException(status_code=400, detail="No job IDs provided.")
     
@@ -125,14 +131,18 @@ def bulk_reorder(payload: BulkJobAction, db: Session = Depends(get_db)):
         
     db.bulk_update_mappings(Job, mappings)
     db.commit()
+    from backend.bot import engine
+    background_tasks.add_task(engine.broadcast_status)
     return {"reordered": total}
 
 @router.post("/bulk/delete")
-def bulk_delete(payload: BulkJobAction, db: Session = Depends(get_db)):
+def bulk_delete(payload: BulkJobAction, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if not payload.job_ids:
         raise HTTPException(status_code=400, detail="No job IDs provided.")
     db.query(Job).filter(Job.id.in_(payload.job_ids)).delete(synchronize_session=False)
     db.commit()
+    from backend.bot import engine
+    background_tasks.add_task(engine.broadcast_status)
     return {"deleted": len(payload.job_ids)}
 
 @router.post("/bulk/blacklist-company")
@@ -163,7 +173,7 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     return job
 
 @router.post("/{job_id}/approve", response_model=JobResponse)
-def approve_job(job_id: int, payload: JobApprove, db: Session = Depends(get_db)):
+def approve_job(job_id: int, payload: JobApprove, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -174,10 +184,12 @@ def approve_job(job_id: int, payload: JobApprove, db: Session = Depends(get_db))
     job.priority = 0
     db.commit()
     db.refresh(job)
+    from backend.bot import engine
+    background_tasks.add_task(engine.broadcast_status)
     return job
 
 @router.post("/{job_id}/skip", response_model=JobResponse)
-async def skip_job(job_id: int, payload: JobSkip, db: Session = Depends(get_db)):
+async def skip_job(job_id: int, payload: JobSkip, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -196,4 +208,5 @@ async def skip_job(job_id: int, payload: JobSkip, db: Session = Depends(get_db))
         elif engine.current_job_task and not engine.current_job_task.done():
             engine.current_job_task.cancel()
             
+    background_tasks.add_task(engine.broadcast_status)
     return job

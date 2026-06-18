@@ -3,6 +3,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { BotStatusBar } from './components/BotStatusBar';
 import { PopupModal } from './components/PopupModal';
 import { Dashboard } from './pages/Dashboard';
+import { Tasks } from './pages/Tasks';
 import { SearchCriteria } from './pages/SearchCriteria';
 import { Jobs } from './pages/Jobs';
 import { Applications } from './pages/Applications';
@@ -12,7 +13,7 @@ import { Settings } from './pages/Settings';
 import { Analytics } from './pages/Analytics';
 import { 
   LayoutDashboard, Search, Briefcase, CheckCircle2, MessageSquare, 
-  Terminal, Settings as SettingsIcon, Power, Network
+  Terminal, Settings as SettingsIcon, Power, Network, ListOrdered
 } from 'lucide-react';
 import api from './lib/api';
 import { useBot, type PageName } from './hooks/useBot';
@@ -39,6 +40,7 @@ export const App: React.FC = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard': return <Dashboard />;
+      case 'tasks': return <Tasks />;
       case 'search': return <SearchCriteria />;
       case 'jobs': return <Jobs />;
       case 'applications': return <Applications />;
@@ -52,6 +54,7 @@ export const App: React.FC = () => {
 
   const navItems = [
     { name: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { name: 'tasks', label: 'Tasks Sequence', icon: <ListOrdered className="w-5 h-5" /> },
     { name: 'search', label: 'Search Criteria', icon: <Search className="w-5 h-5" /> },
     { name: 'jobs', label: 'Jobs', icon: <Briefcase className="w-5 h-5" /> },
     { name: 'applications', label: 'Applications', icon: <CheckCircle2 className="w-5 h-5" /> },
@@ -68,7 +71,11 @@ export const App: React.FC = () => {
       <aside className="w-64 bg-slate-100 border-r border-slate-200 flex flex-col justify-between flex-shrink-0">
         <div>
           {/* Logo Brand Header */}
-          <div className="px-6 py-5 border-b border-slate-200 flex items-center gap-3">
+          <div 
+            className="px-6 py-5 border-b border-slate-200 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors"
+            onClick={() => setCurrentPage('dashboard')}
+            title="Go to Dashboard"
+          >
             <div className="w-10 h-10 flex-shrink-0">
               <svg className="w-full h-full" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
                 {/* Briefcase Top Handle */}
@@ -134,7 +141,7 @@ export const App: React.FC = () => {
         <BotStatusBar />
 
         {/* Page Render */}
-        <div className="flex-1">
+        <div className="flex-1 flex flex-col min-h-0">
           {renderPage()}
         </div>
 

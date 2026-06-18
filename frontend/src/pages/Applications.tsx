@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api, { API_BASE_URL } from '../lib/api';
 import { Calendar, FileText, CheckCircle, ChevronRight, MessageSquare, Search, Upload } from 'lucide-react';
+import { useBot } from '../hooks/useBot';
 
 interface FilledField {
   label: string;
@@ -28,7 +29,7 @@ export const Applications: React.FC = () => {
   const [apps, setApps] = useState<Application[]>([]);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [notesText, setNotesText] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const { appSearchQuery, setAppSearchQuery } = useBot();
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
@@ -71,7 +72,7 @@ export const Applications: React.FC = () => {
   };
 
   const filteredApps = apps.filter((app) => {
-    const query = searchQuery.toLowerCase().trim();
+    const query = appSearchQuery.toLowerCase().trim();
     if (!query) return true;
     return (
       app.job?.title.toLowerCase().includes(query) ||
@@ -81,7 +82,7 @@ export const Applications: React.FC = () => {
   });
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
       
       {/* Applications list */}
       <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden h-full">
@@ -103,15 +104,13 @@ export const Applications: React.FC = () => {
 
         {/* Search Input */}
         <div className="relative flex-shrink-0">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
-            <Search className="w-4 h-4" />
-          </span>
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by job title, company, notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full glass-input pl-10 text-sm"
+            placeholder="Search applications..."
+            value={appSearchQuery}
+            onChange={(e) => setAppSearchQuery(e.target.value)}
+            className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-shadow"
           />
         </div>
 

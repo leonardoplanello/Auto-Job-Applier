@@ -9,17 +9,10 @@ import {
   ExternalLink, GripVertical, ListPlus, Zap, X, Clock
 } from 'lucide-react';
 
-interface SearchCriteria {
-  id: number;
-  name: string;
-}
 
 export const Dashboard: React.FC = () => {
   const { status, stats, logs, currentJob, sessionId, setCurrentPage, setJobSearchQuery, setJobStatusFilter, jobsRefreshCounter } = useBot();
-  const [criterias, setCriterias] = useState<SearchCriteria[]>([]);
-  const [selectedCriterias, setSelectedCriterias] = useState<number[]>([]);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [queuedCount, setQueuedCount] = useState<number>(0);
   const [queuedJobsList, setQueuedJobsList] = useState<Job[]>([]);
   const [automationMode, setAutomationMode] = useState<'manual' | 'auto'>('manual');
@@ -28,52 +21,7 @@ export const Dashboard: React.FC = () => {
   const [limitReached, setLimitReached] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
-  // Drag and drop states for filters in the dropdown
-  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggingIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDragEnd = () => {
-    setDraggingIndex(null);
-  };
-
-  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
-    e.preventDefault();
-    if (draggingIndex === null || draggingIndex === targetIndex) {
-      setDraggingIndex(null);
-      return;
-    }
-
-    const newList = [...criterias];
-    const [draggedItem] = newList.splice(draggingIndex, 1);
-    newList.splice(targetIndex, 0, draggedItem);
-    
-    setCriterias(newList);
-    setDraggingIndex(null);
-
-    // Persist order to backend DB
-    try {
-      const orderedIds = newList.map(c => c.id);
-      await api.post('/api/search/reorder', orderedIds);
-    } catch (err) {
-      console.error('Failed to save reordered search criteria from dashboard:', err);
-      alert('Failed to save criteria order.');
-      // Refresh list to revert
-      try {
-        const res = await api.get('/api/search');
-        setCriterias(res.data);
-      } catch (e) {
-        console.error('Failed to reload search criteria:', e);
-      }
-    }
-  };
 
   // Drag and drop states for queue
   const [draggingQueueIndex, setDraggingQueueIndex] = useState<number | null>(null);
@@ -128,29 +76,11 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // Click outside listener for custom dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+
 
   // Fetch search criteria list and settings on mount
   useEffect(() => {
     const fetchInitialData = async () => {
-      try {
-        const res = await api.get('/api/search');
-        setCriterias(res.data);
-        if (res.data.length > 0) {
-          setSelectedCriterias(res.data.map((c: any) => c.id));
-        }
-      } catch (err) {
-        console.error('Failed to load search criteria:', err);
-      }
       try {
         const res = await api.get('/api/settings');
         if (res.data) {
@@ -160,8 +90,10 @@ export const Dashboard: React.FC = () => {
           if (res.data.bot_mode) {
             setAutomationMode(res.data.bot_mode === 'auto' ? 'auto' : 'manual');
           }
-          if (res.data.easy_apply_limit_reached === 'true') {
-            setLimitReached(true);
+          if (res.data.bot_tasks_sequence) {
+            setTasks(JSON.parse(res.data.bot_tasks_sequence));
+          } else {
+            setTasks([{ type: 'process_queue', target: 'all' }]);
           }
         }
       } catch (err) {
@@ -237,23 +169,16 @@ export const Dashboard: React.FC = () => {
   }, [logs]);
 
   const handleStartBot = async () => {
-    if (selectedCriterias.length === 0 && queuedCount === 0) {
-      alert('Please select at least one search filter or have jobs in the queue to start.');
+    if (tasks.length === 0) {
+      alert('Please configure at least one task in the Tasks Sequence to start.');
       return;
     }
     setIsLoading(true);
     setLimitReached(false);
 
-    // Sort selectedCriterias to match the current order of criterias list
-    const sortedSelectedCriterias = [...selectedCriterias].sort((a, b) => {
-      const indexA = criterias.findIndex(c => c.id === a);
-      const indexB = criterias.findIndex(c => c.id === b);
-      return indexA - indexB;
-    });
-
     try {
       await api.post('/api/bot/start', {
-        search_ids: sortedSelectedCriterias,
+        tasks: tasks,
         mode: automationMode === 'manual' ? 'review' : 'auto'
       });
     } catch (err: any) {
@@ -335,105 +260,42 @@ export const Dashboard: React.FC = () => {
         </h3>
         
         <div className="flex flex-wrap items-end gap-6">
-          {/* Select Search Criteria (Multi-Select) */}
-          <div className="flex-1 min-w-[280px] space-y-2 relative" ref={dropdownRef}>
-            <label className="text-xs font-bold text-slate-400 uppercase block">Search Filters (Multiple)</label>
-            
-            <div className="relative">
-              <button
-                type="button"
-                disabled={isBotActive}
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="w-full glass-input disabled:opacity-50 text-xs text-slate-700 bg-white text-left flex justify-between items-center py-2 px-3 border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 focus:outline-none cursor-pointer min-h-[38px]"
+          {/* Compressed Tasks Sequence View */}
+          <div className="flex-1 min-w-[280px] space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-400 uppercase block">Tasks Sequence</label>
+              <button 
+                onClick={() => setCurrentPage('tasks')}
+                className="text-[10px] font-bold text-primary-600 hover:text-primary-800 uppercase tracking-wider"
               >
-                <span className="truncate">
-                  {selectedCriterias.length === 0
-                    ? queuedCount > 0 
-                      ? `Apply to queued jobs only (${queuedCount} in queue)` 
-                      : 'No filters selected'
-                    : `${selectedCriterias.length} filter(s) selected: ` + 
-                      criterias
-                        .filter(c => selectedCriterias.includes(c.id))
-                        .map(c => c.name)
-                        .join(', ')}
-                </span>
-                <span className="pointer-events-none flex items-center pr-1 text-slate-500">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </span>
+                Edit Tasks
               </button>
-
-              {dropdownOpen && !isBotActive && (
-                <div className="absolute z-50 mt-1 w-full rounded-md bg-white shadow-lg border border-slate-200 py-1 text-xs max-h-60 overflow-auto">
-                  {queuedCount > 0 && (
-                    <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between text-slate-550 font-medium">
-                      <span>Queue: {queuedCount} jobs ready</span>
-                      <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">Will process first</span>
+            </div>
+            
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-[38px] flex items-center justify-between">
+              <div className="flex flex-col gap-1 w-full">
+                {tasks.length === 0 ? (
+                  <span className="text-xs text-slate-500 italic">No tasks configured.</span>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{tasks.length}</span>
+                      <span>Task(s) configured to run in order</span>
                     </div>
-                  )}
-                  {criterias.length === 0 ? (
-                    <div className="px-3 py-2 text-slate-405 italic">No filters created</div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCriterias(criterias.map(c => c.id))}
-                          className="text-primary-600 hover:text-primary-800 font-semibold cursor-pointer"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCriterias([])}
-                          className="text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                      </div>
-                      {criterias.map((c, index) => {
-                        const isChecked = selectedCriterias.includes(c.id);
-                        return (
-                          <div
-                            key={c.id}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, index)}
-                            className={`flex items-center px-3 py-1.5 hover:bg-slate-50 transition-all duration-150 ${
-                              draggingIndex === index ? 'opacity-40 bg-slate-100' : ''
-                            }`}
-                          >
-                            <div
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, index)}
-                              onDragEnd={handleDragEnd}
-                              className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-655 p-1 mr-1 rounded transition-colors"
-                              title="Drag to reorder"
-                            >
-                              <GripVertical className="w-3.5 h-3.5" />
-                            </div>
-                            <label className="flex items-center flex-1 cursor-pointer select-none py-1">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  if (isChecked) {
-                                    setSelectedCriterias(selectedCriterias.filter(id => id !== c.id));
-                                  } else {
-                                    setSelectedCriterias([...selectedCriterias, c.id]);
-                                  }
-                                }}
-                                className="mr-2.5 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
-                              />
-                              <span className="text-slate-700 font-medium">{c.name}</span>
-                            </label>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-              )}
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 truncate">
+                      {tasks.slice(0, 2).map((t, i) => (
+                        <span key={i} className="flex items-center gap-1">
+                          {i > 0 && <span>→</span>}
+                          <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                            {t.type === 'process_queue' ? `Queue (${t.target})` : 'Search'}
+                          </span>
+                        </span>
+                      ))}
+                      {tasks.length > 2 && <span className="text-slate-400">+{tasks.length - 2} more</span>}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -529,7 +391,7 @@ export const Dashboard: React.FC = () => {
               </>
             ) : (
               <button
-                disabled={isLoading || (selectedCriterias.length === 0 && queuedCount === 0)}
+                disabled={isLoading || tasks.length === 0}
                 onClick={handleStartBot}
                 className="glass-btn-primary py-2.5 px-6 font-semibold"
               >

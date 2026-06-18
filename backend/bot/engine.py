@@ -67,37 +67,29 @@ async def check_linkedin_limit(page: Page) -> bool:
 
 def get_global_stats() -> Dict[str, int]:
     global historical_stats
-    if historical_stats is None:
-        db = SessionLocal()
-        try:
-            from sqlalchemy import func
-            result = db.query(
-                func.sum(SessionModel.jobs_found),
-                func.sum(SessionModel.jobs_applied),
-                func.sum(SessionModel.jobs_skipped),
-                func.sum(SessionModel.jobs_failed),
-                func.sum(SessionModel.popups_shown)
-            ).first()
-            if result:
-                historical_stats = {
-                    "found": result[0] or 0,
-                    "applied": result[1] or 0,
-                    "skipped": result[2] or 0,
-                    "failed": result[3] or 0,
-                    "popups": result[4] or 0
-                }
-            else:
-                historical_stats = {"found": 0, "applied": 0, "skipped": 0, "failed": 0, "popups": 0}
-        finally:
-            db.close()
-            
-    return {
-        "found": historical_stats["found"] + stats["found"],
-        "applied": historical_stats["applied"] + stats["applied"],
-        "skipped": historical_stats["skipped"] + stats["skipped"],
-        "failed": historical_stats["failed"] + stats["failed"],
-        "popups": historical_stats["popups"] + stats["popups"],
-    }
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func
+        from backend.models import Job, Session as SessionModel
+        
+        found = db.query(Job).count()
+        applied = db.query(Job).filter(Job.status == "applied").count()
+        skipped = db.query(Job).filter(Job.status == "skipped").count()
+        failed = db.query(Job).filter(Job.status == "failed").count()
+        
+        # Popups count can remain from session + historical
+        popups_result = db.query(func.sum(SessionModel.popups_shown)).scalar()
+        popups = (popups_result or 0) + stats.get("popups", 0)
+        
+        return {
+            "found": found,
+            "applied": applied,
+            "skipped": skipped,
+            "failed": failed,
+            "popups": popups
+        }
+    finally:
+        db.close()
 
 browser_session: Optional[BrowserSession] = None
 bot_task: Optional[asyncio.Task] = None
@@ -1034,13 +1026,13 @@ async def apply_to_job(
     if no_longer_accepting:
         log_event(
             session_id, "info", "apply",
-            f"Job is no longer accepting applications. Skipping — {job.title} @ {job.company}",
+            f"Job is no longer accepting applications. Failing — {job.title} @ {job.company}",
             company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
         )
-        job.status = "skipped"
+        job.status = "failed"
         job.skip_reason = "No longer accepting applications"
         db.commit()
-        stats["skipped"] += 1
+        stats["failed"] += 1
         return False
 
     if already_applied:
@@ -1953,9 +1945,9 @@ async def close_easy_apply_dialog(page: Page):
     except Exception:
         pass
 
-async def process_queue(page: Page, db: Session, bot_settings: Dict[str, Any], initial_run: bool = False):
+async def process_queue(page: Page, db: Session, bot_settings: Dict[str, Any], target: str = "all", initial_run: bool = False):
     """
-    Process and apply to all jobs currently in the queue.
+    Process and apply to jobs currently in the queue, either all or just prioritized.
     """
     global session_id, status
     
@@ -1964,7 +1956,11 @@ async def process_queue(page: Page, db: Session, bot_settings: Dict[str, Any], i
     if status in ["stopped", "finished"]:
         return
         
-    queued_jobs = db.query(Job).filter(Job.status == "queued").order_by(Job.priority.desc(), Job.discovered_at.asc()).all()
+    if target == "prioritized":
+        queued_jobs = db.query(Job).filter(Job.status == "queued", Job.priority > 0).order_by(Job.priority.desc(), Job.discovered_at.asc()).all()
+    else:
+        queued_jobs = db.query(Job).filter(Job.status == "queued").order_by(Job.priority.desc(), Job.discovered_at.asc()).all()
+
     if queued_jobs:
         run_desc = "pre-existing queued" if initial_run else "newly discovered"
         log_event(
@@ -2001,7 +1997,7 @@ async def process_queue(page: Page, db: Session, bot_settings: Dict[str, Any], i
             # Prevent rapid operations spam (Anti-detection)
             await human_delay(1500, 3500)
 
-async def bot_loop(search_ids: Optional[List[int]], launch_mode: str):
+async def bot_loop(tasks: Optional[List[Any]], launch_mode: str):
     """
     Core bot execution runner coordinates state changes and session flows.
     """
@@ -2017,13 +2013,22 @@ async def bot_loop(search_ids: Optional[List[int]], launch_mode: str):
     
     db = SessionLocal()
     try:
+        # Determine search_id for session (just use the first search task's id if any)
+        session_search_id = None
+        if tasks:
+            for t in tasks:
+                t_dict = t.model_dump() if hasattr(t, "model_dump") else t
+                if t_dict.get("type") == "search" and t_dict.get("search_id"):
+                    session_search_id = t_dict["search_id"]
+                    break
+
         # Create execution session record in SQLite
         sess_record = SessionModel(
             id=session_id,
             status="running",
             mode=launch_mode,
             started_at=datetime.datetime.utcnow(),
-            search_id=search_ids[0] if search_ids else None
+            search_id=session_search_id
         )
         db.add(sess_record)
         db.commit()
@@ -2032,18 +2037,9 @@ async def bot_loop(search_ids: Optional[List[int]], launch_mode: str):
         settings = db.query(Setting).all()
         bot_settings = {s.key: s.value for s in settings}
         
-        # Load criteria
-        criteria_list = []
-        if search_ids:
-            for s_id in search_ids:
-                crit = db.query(SearchCriteria).filter(SearchCriteria.id == s_id).first()
-                if crit:
-                    criteria_list.append(crit)
-        
-        # Check if we can proceed (either we have criteria, or we have queued jobs in the database)
-        queued_jobs = db.query(Job).filter(Job.status == "queued").order_by(Job.priority.desc(), Job.discovered_at.asc()).all()
-        if not criteria_list and not queued_jobs:
-            log_event(session_id, "error", "system", "No valid Search Criteria specified and no queued jobs found.")
+        # Check if we can proceed
+        if not tasks:
+            log_event(session_id, "error", "system", "No valid tasks specified.")
             await update_status("stopped")
             return
             
@@ -2096,125 +2092,115 @@ async def bot_loop(search_ids: Optional[List[int]], launch_mode: str):
                 return
                 
 
-        # Process pre-existing queued/approved jobs before starting searches
         limit_reached = False
-        try:
-            await process_queue(page, db, bot_settings, initial_run=True)
-        except LinkedInLimitReachedException:
-            limit_reached = True
-            log_event(session_id, "warning", "bot", "Daily LinkedIn Easy Apply limit reached during pre-existing queue. Skipping further applications but proceeding to search phase.")
-            db_setting = db.query(Setting).filter(Setting.key == "easy_apply_limit_reached").first()
-            if not db_setting:
-                db_setting = Setting(key="easy_apply_limit_reached", value="true")
-                db.add(db_setting)
-            else:
-                db_setting.value = "true"
-                db_setting.updated_at = datetime.datetime.utcnow()
-            db.commit()
 
-        # Loop through each criteria in order
-        for criteria in criteria_list:
+        # Process each task in order
+        for task in tasks:
+            if limit_reached:
+                break
+                
+            task_dict = task.model_dump() if hasattr(task, "model_dump") else task
+            task_type = task_dict.get("type")
+            
             # Check pause status
             await pause_event.wait()
             # Check if bot was stopped
             if status in ["stopped", "finished"]:
                 break
                 
-            log_event(
-                session_id, "info", "bot",
-                f"Starting search: '{criteria.name}'"
-            )
-            
-            # Authenticated, start jobs discovery
-            await update_status("searching")
-            session_limit = criteria.max_per_session if criteria.max_per_session and criteria.max_per_session > 0 else int(bot_settings.get("session_limit", 10))
-            discovered = await discover_jobs(page, criteria, session_id, db, session_limit, pause_event=pause_event)
-            
-            stats["found"] += len(discovered)
-            await broadcast_status()
-            
-            # Queue state
-            await update_status("queued")
-            
-            # Run over Jobs to approve and queue them
-            for job in discovered:
-                # Check pause status
-                await pause_event.wait()
-                if status in ["stopped", "finished"]:
-                    break
+            if task_type == "process_queue":
+                target = task_dict.get("target", "all")
+                try:
+                    await process_queue(page, db, bot_settings, target=target, initial_run=False)
+                except LinkedInLimitReachedException:
+                    limit_reached = True
+                    log_event(session_id, "warning", "bot", f"Daily LinkedIn Easy Apply limit reached during queue processing. Stopping session.")
+                    db_setting = db.query(Setting).filter(Setting.key == "easy_apply_limit_reached").first()
+                    if not db_setting:
+                        db_setting = Setting(key="easy_apply_limit_reached", value="true")
+                        db.add(db_setting)
+                    else:
+                        db_setting.value = "true"
+                        db_setting.updated_at = datetime.datetime.utcnow()
+                    db.commit()
+
+            elif task_type == "search":
+                search_id = task_dict.get("search_id")
+                if not search_id:
+                    continue
                     
-                # Job review logic
-                if launch_mode == "review":
-                    await update_status("review_pending")
-                    log_event(
-                        session_id, "action", "bot",
-                        f"Awaiting approval for job {job.title} @ {job.company}",
-                        company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
-                    )
+                criteria = db.query(SearchCriteria).filter(SearchCriteria.id == search_id).first()
+                if not criteria:
+                    log_event(session_id, "warning", "bot", f"Search criteria {search_id} not found. Skipping task.")
+                    continue
                     
-                    # Show popup to approve or skip job
-                    job_approved, _ = await show_popup({
-                        "type": "confirm",
-                        "title": "Approve Application?",
-                        "message": f"Do you want to apply to '{job.title}' at '{job.company}'?",
-                        "confirm_label": "Approve",
-                        "cancel_label": "Skip",
-                        "company": job.company,
-                        "job_title": job.title,
-                        "job_url": job.url
-                    })
-                    if job_approved == "__stop_bot__":
-                        raise StopBotException("Execution interrupted by user via popup.")
-                    
-                    if job_approved == "__close_popup__":
+                log_event(session_id, "info", "bot", f"Starting search: '{criteria.name}'")
+                await update_status("searching")
+                session_limit = criteria.max_per_session if criteria.max_per_session and criteria.max_per_session > 0 else int(bot_settings.get("session_limit", 10))
+                discovered = await discover_jobs(page, criteria, session_id, db, session_limit, pause_event=pause_event)
+                
+                stats["found"] += len(discovered)
+                await broadcast_status()
+                
+                await update_status("queued")
+                
+                for job in discovered:
+                    await pause_event.wait()
+                    if status in ["stopped", "finished"]:
+                        break
+                        
+                    if launch_mode == "review":
+                        await update_status("review_pending")
+                        log_event(
+                            session_id, "action", "bot",
+                            f"Awaiting approval for job {job.title} @ {job.company}",
+                            company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
+                        )
+                        
+                        job_approved, _ = await show_popup({
+                            "type": "confirm",
+                            "title": "Approve Application?",
+                            "message": f"Do you want to apply to '{job.title}' at '{job.company}'?",
+                            "confirm_label": "Approve",
+                            "cancel_label": "Skip",
+                            "company": job.company,
+                            "job_title": job.title,
+                            "job_url": job.url
+                        })
+                        if job_approved == "__stop_bot__":
+                            raise StopBotException("Execution interrupted by user via popup.")
+                        
+                        if job_approved == "__close_popup__":
+                            job.status = "queued"
+                            job.priority = 0
+                            job.discovered_at = datetime.datetime.utcnow()
+                            db.commit()
+                            log_event(session_id, "info", "apply", f"Job popup closed. Added to end of queue: {job.title} @ {job.company}")
+                            await broadcast_status()
+                            continue
+                        
+                        if not job_approved:
+                            job.status = "skipped"
+                            job.skip_reason = "Rejected by user in queue"
+                            job.priority = 0
+                            db.commit()
+                            stats["skipped"] += 1
+                            log_event(session_id, "info", "apply", f"Job skipped by user: {job.title} @ {job.company}")
+                            await broadcast_status()
+                            continue
+                        
                         job.status = "queued"
                         job.priority = 0
-                        job.discovered_at = datetime.datetime.utcnow()
                         db.commit()
-                        log_event(session_id, "info", "apply", f"Job popup closed. Added to end of queue: {job.title} @ {job.company}")
+                        log_event(session_id, "success", "apply", f"Job approved and added to queue: {job.title} @ {job.company}")
                         await broadcast_status()
-                        continue
-                    
-                    if not job_approved:
-                        job.status = "skipped"
-                        job.skip_reason = "Rejected by user in queue"
+                    else:
+                        job.status = "queued"
                         job.priority = 0
                         db.commit()
-                        stats["skipped"] += 1
-                        log_event(session_id, "info", "apply", f"Job skipped by user: {job.title} @ {job.company}")
+                        log_event(session_id, "success", "apply", f"Job automatically added to queue: {job.title} @ {job.company}")
                         await broadcast_status()
-                        continue
-                    
-                    # Approved by user: queue the job
-                    job.status = "queued"
-                    job.priority = 0
-                    db.commit()
-                    log_event(session_id, "success", "apply", f"Job approved and added to queue: {job.title} @ {job.company}")
-                    await broadcast_status()
-                else:
-                    # Auto mode: automatically add to queue
-                    job.status = "queued"
-                    job.priority = 0
-                    db.commit()
-                    log_event(session_id, "success", "apply", f"Job automatically added to queue: {job.title} @ {job.company}")
-                    await broadcast_status()
-            
-        # Process newly queued/approved jobs after all searches are complete
-        if not limit_reached:
-            try:
-                await process_queue(page, db, bot_settings, initial_run=False)
-            except LinkedInLimitReachedException:
-                limit_reached = True
-                log_event(session_id, "warning", "bot", "Daily LinkedIn Easy Apply limit reached during newly discovered queue. Stopping session.")
-                db_setting = db.query(Setting).filter(Setting.key == "easy_apply_limit_reached").first()
-                if not db_setting:
-                    db_setting = Setting(key="easy_apply_limit_reached", value="true")
-                    db.add(db_setting)
-                else:
-                    db_setting.value = "true"
-                    db_setting.updated_at = datetime.datetime.utcnow()
-                db.commit()
-            
+
         log_event(session_id, "success", "bot", "End of job application session.")
         if limit_reached:
             await update_status("stopped")
@@ -2252,7 +2238,7 @@ async def bot_loop(search_ids: Optional[List[int]], launch_mode: str):
             await browser_session.close()
             browser_session = None
 
-def start_bot(search_ids: Optional[List[int]], launch_mode: str) -> str:
+def start_bot(tasks: Optional[List[Any]], launch_mode: str) -> str:
     """
     Spawns the bot loop as a background task.
     """
@@ -2272,7 +2258,7 @@ def start_bot(search_ids: Optional[List[int]], launch_mode: str) -> str:
     finally:
         db.close()
         
-    bot_task = asyncio.create_task(bot_loop(search_ids, launch_mode))
+    bot_task = asyncio.create_task(bot_loop(tasks, launch_mode))
     return "Session started."
 
 def pause_bot():

@@ -61,7 +61,7 @@ interface BotStats {
   popups: number;
 }
 
-export type PageName = 'dashboard' | 'search' | 'jobs' | 'applications' | 'qa' | 'logs' | 'settings' | 'analytics';
+export type PageName = 'dashboard' | 'tasks' | 'search' | 'jobs' | 'applications' | 'qa' | 'logs' | 'settings' | 'analytics';
 
 interface BotStore {
   status: string;
@@ -73,6 +73,7 @@ interface BotStore {
   logs: LogEntry[];
   currentPage: PageName;
   jobSearchQuery: string;
+  appSearchQuery: string;
   jobStatusFilter: string;
   jobsRefreshCounter: number;
   
@@ -88,6 +89,7 @@ interface BotStore {
   updateStats: (diff: Partial<BotStats>) => void;
   setCurrentPage: (page: PageName) => void;
   setJobSearchQuery: (query: string) => void;
+  setAppSearchQuery: (query: string) => void;
   setJobStatusFilter: (status: string) => void;
   triggerJobsRefresh: () => void;
 }
@@ -102,6 +104,7 @@ export const useBot = create<BotStore>((set) => ({
   logs: [],
   currentPage: 'dashboard',
   jobSearchQuery: '',
+  appSearchQuery: '',
   jobStatusFilter: 'discovered',
   jobsRefreshCounter: 0,
 
@@ -121,6 +124,7 @@ export const useBot = create<BotStore>((set) => ({
   updateStats: (diff) => set((state) => ({ stats: { ...state.stats, ...diff } })),
   setCurrentPage: (currentPage) => set({ currentPage }),
   setJobSearchQuery: (jobSearchQuery) => set({ jobSearchQuery }),
+  setAppSearchQuery: (appSearchQuery) => set({ appSearchQuery }),
   setJobStatusFilter: (jobStatusFilter) => set({ jobStatusFilter }),
   triggerJobsRefresh: () => set((state) => ({ jobsRefreshCounter: state.jobsRefreshCounter + 1 })),
 }));
