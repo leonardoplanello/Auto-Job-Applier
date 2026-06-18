@@ -1240,14 +1240,14 @@ async def apply_to_job(
 
                 log_event(
                     session_id, "warning", "apply",
-                    "Easy Apply button not found. Job skipped or unavailable.",
+                    "Easy Apply button not found. Job failed or unavailable.",
                     company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
                 )
-                job.status = "skipped"
+                job.status = "failed"
                 job.skip_reason = "Easy Apply button not found"
                 job.priority = 0
                 db.commit()
-                stats["skipped"] += 1
+                stats["failed"] += 1
                 return False
                 
         # Check LinkedIn Limit before clicking

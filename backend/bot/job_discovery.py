@@ -190,16 +190,16 @@ async def apply_company_filter_ui(page: Page, company_name: str, session_id: str
     # 4. Click the "Show results" / "Apply" button
     apply_clicked = False
     apply_selectors = [
-        ".search-reusables__filter-popover button.artdeco-button--primary",
+        "button.artdeco-button--primary:has-text('Show')",
+        "button.artdeco-button--primary:has-text('Exibir')",
+        "button.artdeco-button--primary:has-text('Mostrar')",
+        "button.artdeco-button--primary:has-text('Apply')",
+        "button.artdeco-button--primary:has-text('Aplicar')",
         "div[data-test-search-filter-popover] button.artdeco-button--primary",
+        ".search-reusables__filter-popover button.artdeco-button--primary",
         "button[aria-label*='Apply current filter' i]",
         "button[aria-label*='Aplicar filtro' i]",
         "button[data-control-name='filter_show_results']",
-        ".search-reusables__filter-popover button:has-text('Show results')",
-        ".search-reusables__filter-popover button:has-text('Exibir resultados')",
-        ".search-reusables__filter-popover button:has-text('Mostrar resultados')",
-        ".search-reusables__filter-popover button:has-text('Apply')",
-        ".search-reusables__filter-popover button:has-text('Aplicar')",
     ]
     for sel in apply_selectors:
         try:

@@ -40,7 +40,6 @@ export const Jobs: React.FC = () => {
   } = useBot();
 
   const [selectedStatus, setSelectedStatus] = useState('');
-  const [selectedSkipReason, setSelectedSkipReason] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -82,7 +81,6 @@ export const Jobs: React.FC = () => {
 
   useEffect(() => {
     setSelectedStatus('');
-    setSelectedSkipReason('');
     fetchJobs(false);
   }, [statusFilter]);
 
@@ -163,9 +161,6 @@ export const Jobs: React.FC = () => {
 
   const tabJobs = jobs.filter(job => statusFilter === 'all' || job.status === statusFilter);
 
-  const uniqueSkipReasons = Array.from(
-    new Set(tabJobs.map(j => j.skip_reason).filter(Boolean))
-  ).sort() as string[];
 
   const filteredJobs = tabJobs.filter(job => {
     const query = searchQuery.toLowerCase().trim();
@@ -177,7 +172,6 @@ export const Jobs: React.FC = () => {
       if (!match) return false;
     }
     if (statusFilter === 'all' && selectedStatus && job.status !== selectedStatus) return false;
-    if (selectedSkipReason && job.skip_reason !== selectedSkipReason) return false;
     return true;
   });
 
@@ -232,10 +226,19 @@ export const Jobs: React.FC = () => {
   const requiresConfirm = (action: BulkAction) => action === 'delete' || action === 'blacklist';
 
   const initiateBulkAction = (action: BulkAction) => {
+    const actionableJobs = action === 'delete'
+      ? selectedJobs
+      : selectedJobs.filter(j => j.status !== 'applied');
+
+    if (actionableJobs.length === 0) {
+      setSelectedIds(new Set());
+      return;
+    }
+
     if (requiresConfirm(action)) {
-      setConfirm({ action, jobs: selectedJobs });
+      setConfirm({ action, jobs: actionableJobs });
     } else {
-      executeBulkAction(action, selectedJobs);
+      executeBulkAction(action, actionableJobs);
     }
   };
 
@@ -283,7 +286,7 @@ export const Jobs: React.FC = () => {
 
   const uniqueCompanies = confirm ? [...new Set(confirm.jobs.map(j => j.company))] : [];
 
-  const hasAppliedJobs = selectedJobs.some(j => j.status === 'applied');
+
 
   // Portal-rendered toolbar — escapes the overflow:auto container in App.tsx
   const toolbar = (
@@ -304,7 +307,6 @@ export const Jobs: React.FC = () => {
           <div className="w-px h-6 bg-slate-700 hidden sm:block" />
           <div className="flex flex-wrap gap-2 flex-1">
             {(Object.entries(BULK_ACTION_META) as [BulkAction, typeof BULK_ACTION_META[BulkAction]][])
-              .filter(([action]) => !hasAppliedJobs || action === 'delete')
               .map(([action, meta]) => (
                 <button
                   key={action}
@@ -475,19 +477,11 @@ export const Jobs: React.FC = () => {
                 </div>
               )}
 
-              {(statusFilter === 'skipped' || statusFilter === 'failed' || statusFilter === 'all') && uniqueSkipReasons.length > 0 && (
-                <div className="flex flex-col gap-1 min-w-[170px]">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">{statusFilter === 'failed' ? 'Failure Reason' : 'Skip Reason'}</span>
-                  <select value={selectedSkipReason} onChange={e => setSelectedSkipReason(e.target.value)} className="w-full glass-input text-xs py-1.5 cursor-pointer bg-white">
-                    <option value="">{statusFilter === 'failed' ? 'All Failure Reasons' : 'All Skip Reasons'}</option>
-                    {uniqueSkipReasons.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
-              )}
 
-              {(searchQuery || selectedStatus || selectedSkipReason) && (
+
+              {(searchQuery || selectedStatus) && (
                 <button
-                  onClick={() => { setSearchQuery(''); setSelectedStatus(''); setSelectedSkipReason(''); }}
+                  onClick={() => { setSearchQuery(''); setSelectedStatus(''); }}
                   className="px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-md transition-all cursor-pointer bg-white"
                 >
                   Clear Filters
