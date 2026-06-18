@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased min-h-screen;
+    font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Custom premium scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-100;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+  }
+}
+
+@layer components {
+  /* Custom design system utility classes — Light Theme, Solid, No Gradients */
+  .glass-panel {
+    @apply bg-white border border-slate-200 rounded-xl shadow-sm;
+  }
+
+  .glass-card {
+    @apply bg-white border border-slate-200 rounded-xl p-5 hover:border-slate-300 transition-all duration-200 shadow-sm;
+  }
+
+  .glass-input {
+    @apply bg-white border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all;
+  }
+
+  .glass-btn {
+    @apply px-4 py-2 text-sm font-medium rounded-lg transition-all active:scale-95 duration-100 flex items-center justify-center gap-2 cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .glass-btn-primary {
+    @apply glass-btn bg-primary-600 text-white hover:bg-primary-500 hover:shadow-md border border-primary-600;
+  }
+
+  .glass-btn-secondary {
+    @apply glass-btn bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 border border-slate-200;
+  }
+
+  .glass-btn-danger {
+    @apply glass-btn bg-red-600 text-white hover:bg-red-500 hover:shadow-md border border-red-600;
+  }
+
+  .glass-btn-success {
+    @apply glass-btn bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow-md border border-emerald-600;
+  }
+
+  .glass-btn-warning {
+    @apply glass-btn bg-amber-600 text-white hover:bg-amber-500 hover:shadow-md border border-amber-600;
+  }
+}

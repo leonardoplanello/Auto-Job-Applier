@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <!-- Briefcase Top Handle -->
+  <path d="M192 160V128C192 110.33 206.33 96 224 96H288C305.67 96 320 110.33 320 128V160" stroke="#0b7ae8" stroke-width="24" stroke-linecap="round" />
+
+  <!-- Briefcase Main Body (solid primary-600 blue) -->
+  <rect x="80" y="160" width="352" height="256" rx="48" fill="#0b7ae8" />
+
+  <!-- Inner Lightning Bolt (solid white) -->
+  <path d="M280 200L190 310H250L220 400L320 280H262L280 200Z" fill="#FFFFFF" />
+</svg>
