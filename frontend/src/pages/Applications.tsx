@@ -29,7 +29,7 @@ export const Applications: React.FC = () => {
   const [apps, setApps] = useState<Application[]>([]);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [notesText, setNotesText] = useState('');
-  const { appSearchQuery, setAppSearchQuery } = useBot();
+  const { appSearchQuery, setAppSearchQuery, selectedJobIdForApp, setSelectedJobIdForApp } = useBot();
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
@@ -48,6 +48,17 @@ export const Applications: React.FC = () => {
   useEffect(() => {
     fetchApplications();
   }, []);
+
+  useEffect(() => {
+    if (selectedJobIdForApp && apps.length > 0) {
+      const targetApp = apps.find(a => a.job_id === selectedJobIdForApp);
+      if (targetApp) {
+        handleSelectApp(targetApp);
+        // Clear it so it doesn't stay stuck if they navigate back and forth
+        setSelectedJobIdForApp(null);
+      }
+    }
+  }, [selectedJobIdForApp, apps, setSelectedJobIdForApp]);
 
   const handleSelectApp = (app: Application) => {
     setSelectedApp(app);
@@ -163,7 +174,7 @@ export const Applications: React.FC = () => {
       </div>
 
       {/* Details Side Panel */}
-      <div className="glass-panel border-slate-200 p-6 overflow-y-auto h-full flex flex-col">
+      <div className="glass-panel border-slate-200 p-6 h-full flex flex-col">
         {selectedApp ? (
           <div className="space-y-6 flex-1 flex flex-col justify-between">
             <div className="space-y-5">
@@ -182,13 +193,13 @@ export const Applications: React.FC = () => {
               {selectedApp.fields_filled && selectedApp.fields_filled.length > 0 && (
                 <div className="space-y-2.5">
                   <span className="text-[10px] font-bold text-slate-500 uppercase block">Fields Filled</span>
-                  <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  <div className="space-y-1.5">
                     {selectedApp.fields_filled.map((field, idx) => (
                       <div key={idx} className="bg-slate-50 p-2.5 rounded border border-slate-200 text-[10px] flex justify-between gap-4">
-                        <span className="text-slate-500 truncate max-w-[50%]" title={field.label}>
+                        <span className="text-slate-500 break-words w-1/2 pr-2" title={field.label}>
                           {field.label}
                         </span>
-                        <span className="text-slate-800 font-semibold text-right truncate max-w-[50%]" title={field.value}>
+                        <span className="text-slate-800 font-semibold text-right break-words w-1/2" title={field.value}>
                           {field.value}
                         </span>
                       </div>

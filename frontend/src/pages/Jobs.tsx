@@ -35,6 +35,7 @@ export const Jobs: React.FC = () => {
     setJobStatusFilter: setStatusFilter,
     jobsRefreshCounter,
     setAppSearchQuery,
+    setSelectedJobIdForApp,
     setCurrentPage,
   } = useBot();
 
@@ -417,7 +418,7 @@ export const Jobs: React.FC = () => {
               </button>
             </div>
             <div className="flex flex-wrap bg-slate-100 p-1 border border-slate-200 rounded-lg gap-1">
-              {(['all', 'discovered', 'queued', 'applied', 'skipped'] as const).map(s => (
+              {(['all', 'discovered', 'queued', 'applied', 'skipped', 'failed'] as const).map(s => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
@@ -587,7 +588,7 @@ export const Jobs: React.FC = () => {
                     )}
                     {job.status === 'applied' && (
                       <>
-                        <button onClick={() => { setAppSearchQuery(job.company); setCurrentPage('applications'); }} className="flex-1 glass-btn-secondary py-1.5 text-xs text-primary-600 hover:bg-primary-50 border-primary-100 cursor-pointer"><FileText className="w-3.5 h-3.5" /> Details</button>
+                        <button onClick={() => { setSelectedJobIdForApp(job.id); setAppSearchQuery(''); setCurrentPage('applications'); }} className="flex-1 glass-btn-secondary py-1.5 text-xs text-primary-600 hover:bg-primary-50 border-primary-100 cursor-pointer"><FileText className="w-3.5 h-3.5" /> Details</button>
                         <button onClick={() => setConfirm({ action: 'delete', jobs: [job] })} className="flex-1 glass-btn-secondary py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-100 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
                       </>
                     )}
@@ -659,7 +660,7 @@ export const Jobs: React.FC = () => {
                       )}
                       {job.status === 'applied' && (
                         <>
-                          <button onClick={() => { setAppSearchQuery(job.company); setCurrentPage('applications'); }} title="Details" className="glass-btn-secondary p-1.5 text-xs text-primary-600 hover:bg-primary-50 border-primary-100 cursor-pointer"><FileText className="w-4 h-4" /></button>
+                          <button onClick={() => { setSelectedJobIdForApp(job.id); setAppSearchQuery(''); setCurrentPage('applications'); }} title="Details" className="glass-btn-secondary p-1.5 text-xs text-primary-600 hover:bg-primary-50 border-primary-100 cursor-pointer"><FileText className="w-4 h-4" /></button>
                           <button onClick={() => setConfirm({ action: 'delete', jobs: [job] })} title="Delete" className="glass-btn-secondary p-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-100 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
                         </>
                       )}

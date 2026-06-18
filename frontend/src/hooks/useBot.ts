@@ -76,6 +76,7 @@ interface BotStore {
   appSearchQuery: string;
   jobStatusFilter: string;
   jobsRefreshCounter: number;
+  selectedJobIdForApp: number | null;
   
   setBotStatus: (status: string) => void;
   setSessionId: (id: string | null) => void;
@@ -90,6 +91,7 @@ interface BotStore {
   setCurrentPage: (page: PageName) => void;
   setJobSearchQuery: (query: string) => void;
   setAppSearchQuery: (query: string) => void;
+  setSelectedJobIdForApp: (id: number | null) => void;
   setJobStatusFilter: (status: string) => void;
   triggerJobsRefresh: () => void;
 }
@@ -97,7 +99,7 @@ interface BotStore {
 export const useBot = create<BotStore>((set) => ({
   status: 'idle',
   sessionId: null,
-  mode: 'review',
+  mode: 'auto',
   stats: { found: 0, applied: 0, skipped: 0, failed: 0, popups: 0 },
   currentJob: null,
   activePopup: null,
@@ -107,6 +109,7 @@ export const useBot = create<BotStore>((set) => ({
   appSearchQuery: '',
   jobStatusFilter: 'discovered',
   jobsRefreshCounter: 0,
+  selectedJobIdForApp: null,
 
   setBotStatus: (status) => set({ status }),
   setSessionId: (sessionId) => set({ sessionId }),
@@ -125,6 +128,7 @@ export const useBot = create<BotStore>((set) => ({
   setCurrentPage: (currentPage) => set({ currentPage }),
   setJobSearchQuery: (jobSearchQuery) => set({ jobSearchQuery }),
   setAppSearchQuery: (appSearchQuery) => set({ appSearchQuery }),
+  setSelectedJobIdForApp: (selectedJobIdForApp) => set({ selectedJobIdForApp }),
   setJobStatusFilter: (jobStatusFilter) => set({ jobStatusFilter }),
   triggerJobsRefresh: () => set((state) => ({ jobsRefreshCounter: state.jobsRefreshCounter + 1 })),
 }));
