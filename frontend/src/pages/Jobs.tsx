@@ -5,7 +5,7 @@ import { useBot, type Job } from '../hooks/useBot';
 import {
   Check, X, Search, ExternalLink, Briefcase, Upload,
   Trash2, Ban, ListPlus, Zap, CheckSquare, Square,
-  AlertTriangle, Loader2, LayoutGrid, List, GripVertical, FileText
+  AlertTriangle, Loader2, LayoutGrid, List, GripVertical, FileText, User
 } from 'lucide-react';
 
 type BulkAction = 'skip' | 'approve' | 'prioritize' | 'delete' | 'blacklist';
@@ -536,9 +536,25 @@ export const Jobs: React.FC = () => {
 
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {getStatusBadge(job.status)}
-                        <a href={job.url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-600">
+                        <a href={job.url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-600 transition-colors">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
+                        {job.connected_profiles && job.connected_profiles.length > 0 && (
+                          <div className="flex -space-x-1" title={`${job.connected_profiles.length} Connected Profile(s)`}>
+                            {job.connected_profiles.map((profileUrl, idx) => (
+                              <a
+                                key={idx}
+                                href={profileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-6 h-6 rounded-full bg-primary-100 border-2 border-white flex items-center justify-center text-primary-700 hover:bg-primary-200 hover:z-10 transition-colors relative"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <User className="w-3 h-3" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -617,6 +633,22 @@ export const Jobs: React.FC = () => {
                         <a href={job.url} target="_blank" rel="noopener noreferrer" className="p-1 rounded bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-600 transition-colors">
                           <ExternalLink className="w-3 h-3" />
                         </a>
+                        {job.connected_profiles && job.connected_profiles.length > 0 && (
+                          <div className="flex gap-1" title={`${job.connected_profiles.length} Connected Profile(s)`}>
+                            {job.connected_profiles.map((profileUrl, idx) => (
+                              <a
+                                key={idx}
+                                href={profileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 rounded-full bg-primary-50 hover:bg-primary-100 border border-primary-200 text-primary-600 hover:text-primary-800 transition-colors"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <User className="w-3 h-3" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <p className="text-xs text-primary-600 font-semibold">{job.company}</p>
                       <p className="text-[10px] text-slate-500 mt-0.5 truncate">

@@ -60,6 +60,7 @@ class Job(Base):
     search_id = Column(Integer, ForeignKey("search_criteria.id"), nullable=True)
     skip_reason = Column(String, nullable=True)
     priority = Column(Integer, default=0)
+    connected_profiles = Column(JSON, default=list)
 
     search_criteria = relationship("SearchCriteria")
 

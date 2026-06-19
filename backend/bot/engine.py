@@ -1143,6 +1143,77 @@ async def apply_to_job(
             company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
         )
 
+    # Check if Connect with Hiring Team is enabled
+    try:
+        connect_setting = db.query(Setting).filter(Setting.key == "connect_hiring_team").first()
+        if connect_setting and connect_setting.value == "true":
+            log_event(session_id, "info", "apply", f"Checking for hiring team members to connect...", company=job.company, job_id=job.id)
+            hiring_team_links = page.locator("section:has-text('Meet the hiring team') a[href*='/in/'], section:has-text('hiring team') a[href*='/in/'], div.jobs-premium-company-growth__hiring-team a[href*='/in/']")
+            count = await hiring_team_links.count()
+            if count > 0:
+                connected_urls = []
+                for i in range(count):
+                    profile_url = await hiring_team_links.nth(i).get_attribute("href")
+                    if not profile_url:
+                        continue
+                    if profile_url.startswith("/"):
+                        profile_url = f"https://www.linkedin.com{profile_url}"
+                    if profile_url in connected_urls:
+                        continue
+                        
+                    log_event(session_id, "info", "apply", f"Found hiring team profile: {profile_url}. Attempting to connect...", company=job.company, job_id=job.id)
+                    new_page = await page.context.new_page()
+                    try:
+                        await new_page.goto(profile_url)
+                        await new_page.wait_for_timeout(random.randint(2000, 4000))
+                        
+                        connect_btn = new_page.locator("button:has-text('Connect'), button[aria-label='Connect']").first
+                        if not await connect_btn.is_visible():
+                            # Try under "More" menu
+                            more_btn = new_page.locator("button:has-text('More'), button[aria-label='More']").first
+                            if await more_btn.is_visible():
+                                await more_btn.click()
+                                await new_page.wait_for_timeout(1000)
+                                connect_btn = new_page.locator("div.artdeco-dropdown__content button:has-text('Connect')").first
+                        
+                        if await connect_btn.is_visible():
+                            await connect_btn.click()
+                            await new_page.wait_for_timeout(random.randint(1500, 3000))
+                            
+                            # Look for send without a note
+                            send_btn = new_page.locator("button:has-text('Send without a note'), button:has-text('Send')").first
+                            if await send_btn.is_visible():
+                                await send_btn.click()
+                                await new_page.wait_for_timeout(random.randint(2000, 3000))
+                                
+                                # Check for weekly limit error
+                                error_alert = new_page.locator("text=/Your invitation to .* was not sent because you have reached the weekly limit/i")
+                                if await error_alert.is_visible():
+                                    log_event(session_id, "warning", "bot", "Weekly connection limit reached. Disabling 'Connect with Hiring Team' setting.")
+                                    connect_setting.value = "false"
+                                    db.commit()
+                                    await new_page.close()
+                                    break
+                                else:
+                                    connected_urls.append(profile_url)
+                                    log_event(session_id, "success", "apply", f"Successfully sent connection request to {profile_url}", company=job.company, job_id=job.id)
+                            else:
+                                log_event(session_id, "info", "apply", f"Send button not found on connection modal for {profile_url}", company=job.company, job_id=job.id)
+                        else:
+                            log_event(session_id, "info", "apply", f"Connect button not found or already connected for {profile_url}", company=job.company, job_id=job.id)
+                    except Exception as conn_err:
+                        log_event(session_id, "warning", "apply", f"Failed to connect to {profile_url}: {str(conn_err)}", company=job.company, job_id=job.id)
+                    finally:
+                        if not new_page.is_closed():
+                            await new_page.close()
+                
+                if connected_urls:
+                    job.connected_profiles = connected_urls
+                    db.commit()
+                    
+    except Exception as team_err:
+        log_event(session_id, "warning", "apply", f"Error processing hiring team: {str(team_err)}", company=job.company, job_id=job.id)
+
     # Define a robust list of selectors for the Easy Apply button
     easy_apply_selectors = [
         "button.jobs-apply-button",

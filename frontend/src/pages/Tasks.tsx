@@ -211,11 +211,31 @@ export const Tasks: React.FC = () => {
                     {criterias.length === 0 ? (
                       <div className="px-4 py-3 text-xs text-slate-400 italic">No search criteria found. Create one first.</div>
                     ) : (
-                      criterias.map(c => (
-                        <button key={c.id} onClick={() => addTask({ type: 'search', search_id: c.id })} className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-3 transition-colors">
-                          <Search className="w-4 h-4" /> {c.name}
-                        </button>
-                      ))
+                      <>
+                        {criterias.length > 1 && (
+                          <button 
+                            onClick={() => {
+                              const newTasks = criterias.map(c => ({
+                                id: Math.random().toString(36).substr(2, 9),
+                                type: 'search' as const,
+                                search_id: c.id
+                              }));
+                              const updated = [...tasks, ...newTasks];
+                              setTasks(updated);
+                              setShowAddMenu(false);
+                              handleSave(updated);
+                            }} 
+                            className="w-full text-left px-4 py-2.5 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-3 transition-colors border-b border-emerald-100/50"
+                          >
+                            <Search className="w-4 h-4" /> Add All Searches
+                          </button>
+                        )}
+                        {criterias.map(c => (
+                          <button key={c.id} onClick={() => addTask({ type: 'search', search_id: c.id })} className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-3 transition-colors">
+                            <Search className="w-4 h-4" /> {c.name}
+                          </button>
+                        ))}
+                      </>
                     )}
                   </div>
                   

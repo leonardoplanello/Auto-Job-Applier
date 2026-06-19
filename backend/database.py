@@ -37,6 +37,9 @@ def run_migrations():
             if job_columns and "priority" not in job_columns:
                 cursor.execute("ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0")
                 conn.commit()
+            if job_columns and "connected_profiles" not in job_columns:
+                cursor.execute("ALTER TABLE jobs ADD COLUMN connected_profiles JSON")
+                conn.commit()
                 
             # Migrate search_criteria table
             cursor.execute("PRAGMA table_info(search_criteria)")

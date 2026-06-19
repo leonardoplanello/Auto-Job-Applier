@@ -1,4 +1,5 @@
 import datetime
+import sqlalchemy
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from backend.database import get_db
@@ -18,7 +19,8 @@ DEFAULT_SETTINGS = {
     "auto_open_browser": "false",        # open frontend automatically
     "log_level": "info",                 # debug | info
     "popup_mode": "web",                 # web | desktop (popups display interface)
-    "easy_apply_limit_reached": "false"  # track daily limit reached status
+    "easy_apply_limit_reached": "false", # track daily limit reached status
+    "connect_hiring_team": "false"       # connect with hiring team members before applying
 }
 
 def get_all_settings(db: Session) -> dict:
@@ -34,7 +36,13 @@ def get_all_settings(db: Session) -> dict:
             initialized_any = True
             
     if initialized_any:
-        db.commit()
+        try:
+            db.commit()
+        except sqlalchemy.exc.IntegrityError:
+            db.rollback()
+            # If another thread inserted it, we just return the latest
+            settings = db.query(Setting).all()
+            setting_dict = {s.key: s.value for s in settings}
         
     return setting_dict
 

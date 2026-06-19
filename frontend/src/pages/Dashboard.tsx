@@ -17,6 +17,7 @@ export const Dashboard: React.FC = () => {
   const [queuedJobsList, setQueuedJobsList] = useState<Job[]>([]);
   const [automationMode, setAutomationMode] = useState<'manual' | 'auto'>('manual');
   const [popupMode, setPopupMode] = useState<'web' | 'desktop'>('web');
+  const [connectHiringTeam, setConnectHiringTeam] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -90,6 +91,9 @@ export const Dashboard: React.FC = () => {
           if (res.data.bot_mode) {
             setAutomationMode(res.data.bot_mode === 'auto' ? 'auto' : 'manual');
           }
+          if (res.data.connect_hiring_team) {
+            setConnectHiringTeam(res.data.connect_hiring_team === 'true');
+          }
           if (res.data.bot_tasks_sequence) {
             setTasks(JSON.parse(res.data.bot_tasks_sequence));
           } else {
@@ -158,6 +162,15 @@ export const Dashboard: React.FC = () => {
       await api.put(`/api/settings/bot_mode`, { value: apiMode });
     } catch (err) {
       console.error('Failed to update automation mode:', err);
+    }
+  };
+
+  const handleConnectHiringTeamChange = async (enabled: boolean) => {
+    setConnectHiringTeam(enabled);
+    try {
+      await api.put(`/api/settings/connect_hiring_team`, { value: enabled ? 'true' : 'false' });
+    } catch (err) {
+      console.error('Failed to update connect hiring team:', err);
     }
   };
 
@@ -254,151 +267,175 @@ export const Dashboard: React.FC = () => {
 
       {/* Session Control Panel */}
       <div className="p-6 glass-panel border-slate-200">
-        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
           <Layers className="w-5 h-5 text-primary-600" />
           Automation Control
         </h3>
         
-        <div className="flex flex-wrap items-end gap-6">
-          {/* Compressed Tasks Sequence View */}
-          <div className="flex-1 min-w-[280px] space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-400 uppercase block">Tasks Sequence</label>
-              <button 
-                onClick={() => setCurrentPage('tasks')}
-                className="text-[10px] font-bold text-primary-600 hover:text-primary-800 uppercase tracking-wider"
-              >
-                Edit Tasks
-              </button>
-            </div>
-            
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-[38px] flex items-center justify-between">
-              <div className="flex flex-col gap-1 w-full">
-                {tasks.length === 0 ? (
-                  <span className="text-xs text-slate-500 italic">No tasks configured.</span>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{tasks.length}</span>
-                      <span>Task(s) configured to run in order</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 truncate">
-                      {tasks.slice(0, 2).map((t, i) => (
-                        <span key={i} className="flex items-center gap-1">
-                          {i > 0 && <span>→</span>}
-                          <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded truncate max-w-[120px]">
-                            {t.type === 'process_queue' ? `Queue (${t.target})` : 'Search'}
+        <div className="flex flex-col xl:flex-row gap-6">
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+            {/* Compressed Tasks Sequence View */}
+            <div className="md:col-span-2 xl:col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tasks Sequence</label>
+                <button 
+                  onClick={() => setCurrentPage('tasks')}
+                  className="text-[11px] font-bold text-primary-600 hover:text-primary-800 uppercase tracking-wider"
+                >
+                  Edit Tasks
+                </button>
+              </div>
+              
+              <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 h-11 flex items-center justify-between">
+                <div className="flex flex-col justify-center w-full">
+                  {tasks.length === 0 ? (
+                    <span className="text-sm text-slate-500 italic">No tasks configured.</span>
+                  ) : (
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="bg-white shadow-sm border border-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-bold">{tasks.length}</span>
+                        <span className="text-xs font-semibold text-slate-600 hidden sm:inline">Tasks</span>
+                      </div>
+                      <div className="h-4 w-px bg-slate-300 shrink-0 hidden sm:block"></div>
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 truncate">
+                        {tasks.slice(0, 2).map((t, i) => (
+                          <span key={i} className="flex items-center gap-1.5 shrink-0">
+                            {i > 0 && <span className="text-slate-400">→</span>}
+                            <span className="truncate max-w-[140px]">
+                              {t.type === 'process_queue' ? `Queue (${t.target})` : 'Search'}
+                            </span>
                           </span>
-                        </span>
-                      ))}
-                      {tasks.length > 2 && <span className="text-slate-400">+{tasks.length - 2} more</span>}
+                        ))}
+                        {tasks.length > 2 && <span className="text-slate-400 shrink-0">+{tasks.length - 2} more</span>}
+                      </div>
                     </div>
-                  </>
-                )}
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Automation Mode */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Automation Mode</label>
+              <div className="flex bg-slate-50 p-1 border border-slate-200 rounded-lg h-11">
+                <button
+                  disabled={isBotActive}
+                  onClick={() => handleAutomationModeChange('manual')}
+                  className={`flex-1 flex items-center justify-center px-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    automationMode === 'manual'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                  }`}
+                >
+                  Manual
+                </button>
+                <button
+                  disabled={isBotActive}
+                  onClick={() => handleAutomationModeChange('auto')}
+                  className={`flex-1 flex items-center justify-center px-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    automationMode === 'auto'
+                      ? 'bg-primary-600 text-white shadow-sm border border-primary-600'
+                      : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                  }`}
+                >
+                  100% Auto
+                </button>
+              </div>
+            </div>
+
+            {/* Popup Mode */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Popup Mode</label>
+              <div className="flex bg-slate-50 p-1 border border-slate-200 rounded-lg h-11">
+                <button
+                  disabled={isBotActive}
+                  onClick={() => handlePopupModeChange('web')}
+                  className={`flex-1 flex items-center justify-center px-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    popupMode === 'web'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                  }`}
+                >
+                  Web
+                </button>
+                <button
+                  disabled={isBotActive}
+                  onClick={() => handlePopupModeChange('desktop')}
+                  className={`flex-1 flex items-center justify-center px-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    popupMode === 'desktop'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                  }`}
+                >
+                  Desktop
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Automation Mode */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase block">Automation Mode</label>
-            <div className="flex bg-slate-100 p-1 border border-slate-200 rounded-lg">
-              <button
-                disabled={isBotActive}
-                onClick={() => handleAutomationModeChange('manual')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  automationMode === 'manual'
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Manual Review
-              </button>
-              <button
-                disabled={isBotActive}
-                onClick={() => handleAutomationModeChange('auto')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  automationMode === 'auto'
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                100% Automatic
-              </button>
+          {/* Connect & Actions (Right side on XL) */}
+          <div className="flex flex-col sm:flex-row xl:flex-col gap-5 xl:w-[240px] shrink-0">
+            {/* Connect with Hiring Team */}
+            <div className="space-y-2 flex-1 xl:flex-none">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Connections</label>
+              <div className="flex items-center justify-center xl:justify-start h-11 bg-slate-50 px-4 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => !isBotActive && handleConnectHiringTeamChange(!connectHiringTeam)}>
+                <input
+                  type="checkbox"
+                  disabled={isBotActive}
+                  checked={connectHiringTeam}
+                  onChange={(e) => handleConnectHiringTeamChange(e.target.checked)}
+                  className="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500 cursor-pointer disabled:opacity-50"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <span className={`ml-3 text-sm font-semibold ${isBotActive ? 'text-slate-400' : 'text-slate-700'}`}>
+                  Connect w/ Hiring Team
+                </span>
+              </div>
             </div>
-          </div>
 
-          {/* Popup Mode */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase block">Popup Mode</label>
-            <div className="flex bg-slate-100 p-1 border border-slate-200 rounded-lg">
-              <button
-                disabled={isBotActive}
-                onClick={() => handlePopupModeChange('web')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  popupMode === 'web'
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Web Only
-              </button>
-              <button
-                disabled={isBotActive}
-                onClick={() => handlePopupModeChange('desktop')}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  popupMode === 'desktop'
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Desktop (Python)
-              </button>
-            </div>
-          </div>
-
-          {/* Action Button */}
-          <div className="flex items-center gap-2">
-            {isBotActive ? (
-              <>
-                {status === 'paused' ? (
+            {/* Action Button */}
+            <div className="flex items-end flex-1 xl:flex-none">
+              {isBotActive ? (
+                <div className="flex items-center gap-2 w-full">
+                  {status === 'paused' ? (
+                    <button
+                      disabled={isLoading}
+                      onClick={handleResumeBot}
+                      className="glass-btn-primary h-11 px-4 font-semibold flex-1 flex items-center justify-center gap-2"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      Resume
+                    </button>
+                  ) : (
+                    <button
+                      disabled={isLoading}
+                      onClick={handlePauseBot}
+                      className="glass-btn bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 h-11 px-4 font-semibold flex-1 flex items-center justify-center gap-2"
+                    >
+                      <Pause className="w-4 h-4" />
+                      Pause
+                    </button>
+                  )}
                   <button
                     disabled={isLoading}
-                    onClick={handleResumeBot}
-                    className="glass-btn-primary py-2.5 px-6 font-semibold"
+                    onClick={handleStopBot}
+                    className="glass-btn-danger h-11 px-4 font-semibold flex-1 flex items-center justify-center gap-2"
                   >
-                    <Play className="w-4 h-4 fill-current" />
-                    Resume Session
+                    <Square className="w-4 h-4 fill-current" />
+                    Stop
                   </button>
-                ) : (
-                  <button
-                    disabled={isLoading}
-                    onClick={handlePauseBot}
-                    className="glass-btn bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 py-2.5 px-6 font-semibold"
-                  >
-                    <Pause className="w-4 h-4" />
-                    Pause Session
-                  </button>
-                )}
+                </div>
+              ) : (
                 <button
-                  disabled={isLoading}
-                  onClick={handleStopBot}
-                  className="glass-btn-danger py-2.5 px-6 font-semibold"
+                  disabled={isLoading || tasks.length === 0}
+                  onClick={handleStartBot}
+                  className="glass-btn-primary h-11 px-6 font-bold w-full flex items-center justify-center gap-2 text-sm"
                 >
-                  <Square className="w-4 h-4 fill-current" />
-                  Stop Automation
+                  <Play className="w-4 h-4 fill-current" />
+                  Start Session
                 </button>
-              </>
-            ) : (
-              <button
-                disabled={isLoading || tasks.length === 0}
-                onClick={handleStartBot}
-                className="glass-btn-primary py-2.5 px-6 font-semibold"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                Start Session
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api, { API_BASE_URL } from '../lib/api';
-import { Calendar, FileText, CheckCircle, ChevronRight, MessageSquare, Search, Upload } from 'lucide-react';
+import { Calendar, FileText, CheckCircle, ChevronRight, MessageSquare, Search, Upload, ExternalLink, User } from 'lucide-react';
 import { useBot } from '../hooks/useBot';
 
 interface FilledField {
@@ -20,8 +20,9 @@ interface Application {
   job?: {
     title: string;
     company: string;
-    location: string;
     url: string;
+    location: string;
+    connected_profiles?: string[];
   };
 }
 
@@ -151,7 +152,34 @@ export const Applications: React.FC = () => {
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-slate-800">{app.job?.title}</h4>
-                    <p className="text-xs text-primary-600 font-semibold">{app.job?.company}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-primary-600 font-semibold">{app.job?.company}</p>
+                      {app.job?.url && (
+                        <a
+                          href={app.job.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-primary-600 transition-colors bg-white/50 px-1.5 py-0.5 rounded border border-slate-200/50"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          LinkedIn
+                        </a>
+                      )}
+                      {app.job?.connected_profiles?.map((profileUrl, idx) => (
+                        <a
+                          key={idx}
+                          href={profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center justify-center text-primary-600 hover:text-primary-800 transition-colors bg-primary-50 hover:bg-primary-100 p-1 rounded-full border border-primary-200"
+                          title="Connected with Hiring Team Member"
+                        >
+                          <User className="w-3 h-3" />
+                        </a>
+                      ))}
+                    </div>
                     <p className="text-[10px] text-slate-500 mt-1">
                       Applied on: {new Date(app.submitted_at).toLocaleDateString()} at{' '}
                       {new Date(app.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -185,6 +213,34 @@ export const Applications: React.FC = () => {
                 <h3 className="text-base font-bold text-slate-800 mt-3">{selectedApp.job?.title}</h3>
                 <p className="text-sm text-primary-600 font-semibold">{selectedApp.job?.company}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{selectedApp.job?.location}</p>
+                {selectedApp.job?.url && (
+                  <a 
+                    href={selectedApp.job.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-xs text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    View Job on LinkedIn
+                  </a>
+                )}
+                {selectedApp.job?.connected_profiles && selectedApp.job.connected_profiles.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Connected:</span>
+                    {selectedApp.job.connected_profiles.map((profileUrl, idx) => (
+                      <a
+                        key={idx}
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors px-2 py-1 rounded-full border border-primary-200"
+                      >
+                        <User className="w-3 h-3" />
+                        Profile {idx + 1}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <hr className="border-slate-100" />

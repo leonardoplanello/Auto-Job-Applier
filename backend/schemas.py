@@ -68,6 +68,7 @@ class JobResponse(BaseModel):
     search_id: Optional[int] = None
     skip_reason: Optional[str] = None
     priority: int = 0
+    connected_profiles: Optional[List[str]] = []
     model_config = ConfigDict(from_attributes=True)
 
 class JobApprove(BaseModel):

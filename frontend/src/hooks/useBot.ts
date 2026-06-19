@@ -15,6 +15,7 @@ export interface Job {
   search_id?: number;
   skip_reason?: string;
   priority?: number;
+  connected_profiles?: string[];
 }
 
 export interface LogEntry {
