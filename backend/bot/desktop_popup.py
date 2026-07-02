@@ -365,21 +365,73 @@ def show_desktop_popup(payload: dict) -> Tuple[Any, bool]:
         confirm_action = on_confirm
         skip_action = on_skip
 
-    # 5. CONFIRMATION
-    elif popup_type == "confirm":
-        msg_lbl = ttk.Label(main_frame, text=cleaned_message or "Are you sure?", wraplength=480, justify=tk.LEFT)
-        msg_lbl.pack(anchor=tk.W, fill=tk.BOTH, expand=True, pady=(0, 15))
-
+    elif popup_type == "confirm_message":
+        # Recruiter details labels
+        recruiter_info = f"Recruiter: {payload.get('recruiter_name', 'Recruiter')} ({payload.get('connection_status', 'unknown')} degree)\n"
+        recruiter_info += f"Company: {payload.get('company', 'Company')} | Job: {payload.get('job_title', 'Job')}"
+        
+        info_lbl = ttk.Label(main_frame, text=recruiter_info, style="Company.TLabel", justify=tk.LEFT)
+        info_lbl.pack(anchor=tk.W, pady=(0, 10))
+        
+        q_lbl = ttk.Label(main_frame, text="Message Body (Editable):", style="Question.TLabel")
+        q_lbl.pack(anchor=tk.W, pady=(0, 4))
+        
+        # Scrolled Text Box
+        import tkinter.scrolledtext as st
+        text_box = st.ScrolledText(main_frame, width=55, height=10, font=("Segoe UI", 10))
+        text_box.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        text_box.insert(tk.INSERT, payload.get("current_value", ""))
+        entry_widget = text_box
+        
         def on_confirm():
-            response["answer"] = True
-            response["save"] = False
+            response["answer"] = text_box.get("1.0", tk.END).strip()
+            response["save"] = True
             root.destroy()
-
+            
         def on_skip():
-            response["answer"] = False
+            response["answer"] = None
             response["save"] = False
             root.destroy()
+            
+        confirm_action = on_confirm
+        skip_action = on_skip
 
+    elif popup_type == "confirm_email":
+        recruiter_info = f"Recruiter: {payload.get('recruiter_name', 'Recruiter')} | Email: {payload.get('email', '')}\n"
+        recruiter_info += f"Company: {payload.get('company', 'Company')} | Job: {payload.get('job_title', 'Job')}"
+        
+        info_lbl = ttk.Label(main_frame, text=recruiter_info, style="Company.TLabel", justify=tk.LEFT)
+        info_lbl.pack(anchor=tk.W, pady=(0, 10))
+        
+        sub_lbl = ttk.Label(main_frame, text="Subject:", style="Question.TLabel")
+        sub_lbl.pack(anchor=tk.W, pady=(0, 2))
+        
+        sub_entry = ttk.Entry(main_frame, font=("Segoe UI", 10))
+        sub_entry.pack(fill=tk.X, pady=(0, 8))
+        sub_entry.insert(0, payload.get("subject", ""))
+        
+        body_lbl = ttk.Label(main_frame, text="Email Body (Editable):", style="Question.TLabel")
+        body_lbl.pack(anchor=tk.W, pady=(0, 2))
+        
+        import tkinter.scrolledtext as st
+        text_box = st.ScrolledText(main_frame, width=55, height=8, font=("Segoe UI", 10))
+        text_box.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        text_box.insert(tk.INSERT, payload.get("current_value", ""))
+        entry_widget = text_box
+        
+        def on_confirm():
+            response["answer"] = {
+                "subject": sub_entry.get().strip(),
+                "body": text_box.get("1.0", tk.END).strip()
+            }
+            response["save"] = True
+            root.destroy()
+            
+        def on_skip():
+            response["answer"] = None
+            response["save"] = False
+            root.destroy()
+            
         confirm_action = on_confirm
         skip_action = on_skip
 

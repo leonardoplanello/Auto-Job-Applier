@@ -22,7 +22,9 @@ class Profile(Base):
     current_title = Column(String, nullable=True)
     current_company = Column(String, nullable=True)
     resume_path = Column(String, nullable=True)
+    resume_hosted_url = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 
 class SearchCriteria(Base):
     __tablename__ = "search_criteria"
@@ -134,3 +136,57 @@ class Setting(Base):
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class RecruiterContact(Base):
+    __tablename__ = "recruiter_contacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
+    name = Column(String, nullable=True)
+    linkedin_url = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    websites = Column(JSON, default=list) # JSON List of strings
+    connection_status = Column(String, default="unknown") # 1st, 2nd, 3rd, pending, unknown
+    company = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    discovered_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    job = relationship("Job")
+
+
+class ContactLog(Base):
+    __tablename__ = "contact_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recruiter_id = Column(Integer, ForeignKey("recruiter_contacts.id"), nullable=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
+    template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
+    type = Column(String, nullable=False) # linkedin_message | email
+    status = Column(String, default="sent") # sent | failed | pending_confirmation
+    subject = Column(String, nullable=True)
+    body = Column(Text, nullable=False)
+    sent_at = Column(DateTime, default=datetime.datetime.utcnow)
+    is_non_connected = Column(Boolean, default=False)
+
+    recruiter = relationship("RecruiterContact")
+    job = relationship("Job")
+    template = relationship("MessageTemplate")
+
+
+class MessageTemplate(Base):
+    __tablename__ = "message_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    language = Column(String, nullable=False) # pt | en | es
+    type = Column(String, nullable=False) # linkedin_message | email
+    subject = Column(String, nullable=True) # only for email
+    body = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+

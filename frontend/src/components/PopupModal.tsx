@@ -65,6 +65,11 @@ export const PopupModal: React.FC = () => {
   const [editingFieldLabel, setEditingFieldLabel] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<any>('');
 
+  // States for confirm_message and confirm_email
+  const [editedMessageText, setEditedMessageText] = useState<string>('');
+  const [editedEmailSubject, setEditedEmailSubject] = useState<string>('');
+  const [editedEmailBody, setEditedEmailBody] = useState<string>('');
+
   useEffect(() => {
     if (activePopup) {
       const defaultText = activePopup.current_value !== undefined ? String(activePopup.current_value) : '';
@@ -97,6 +102,11 @@ export const PopupModal: React.FC = () => {
       }
       setEditingFieldLabel(null);
       setEditValue('');
+
+      // Initialize follow-up message & email states
+      setEditedMessageText(activePopup.type === 'confirm_message' ? String(activePopup.current_value || '') : '');
+      setEditedEmailSubject(activePopup.type === 'confirm_email' ? String(activePopup.subject || '') : '');
+      setEditedEmailBody(activePopup.type === 'confirm_email' ? String(activePopup.current_value || '') : '');
     }
   }, [activePopup]);
 
@@ -310,18 +320,34 @@ export const PopupModal: React.FC = () => {
       }
     } else if (activePopup.type === 'question_checkbox') {
       answerPopup(activePopup.popup_id, checkboxAnswer ? 'Yes' : 'No', saveAnswer);
+    } else if (activePopup.type === 'confirm_message') {
+      answerPopup(activePopup.popup_id, editedMessageText, true);
+    } else if (activePopup.type === 'confirm_email') {
+      answerPopup(activePopup.popup_id, {
+        subject: editedEmailSubject,
+        body: editedEmailBody
+      }, true);
     }
   };
 
   const handleConfirm = () => {
     if (activePopup.type === 'confirm') {
       answerPopup(activePopup.popup_id, true, false);
+    } else if (activePopup.type === 'confirm_message') {
+      answerPopup(activePopup.popup_id, editedMessageText, true);
+    } else if (activePopup.type === 'confirm_email') {
+      answerPopup(activePopup.popup_id, {
+        subject: editedEmailSubject,
+        body: editedEmailBody
+      }, true);
     }
   };
 
   const handleCancel = () => {
     if (activePopup.type === 'confirm') {
       answerPopup(activePopup.popup_id, false, false);
+    } else if (activePopup.type === 'confirm_message' || activePopup.type === 'confirm_email') {
+      answerPopup(activePopup.popup_id, null, false);
     }
   };
 
@@ -858,6 +884,88 @@ export const PopupModal: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* TYPE: Confirm Message */}
+            {activePopup.type === 'confirm_message' && (
+              <div className="space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+                  <p><span className="font-bold text-slate-800">Recruiter:</span> {activePopup.recruiter_name} ({activePopup.connection_status} degree)</p>
+                  <p><span className="font-bold text-slate-800">Job:</span> {activePopup.job_title} @ {activePopup.company}</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700">LinkedIn Message Body (Editable):</label>
+                  <textarea
+                    value={editedMessageText}
+                    onChange={(e) => setEditedMessageText(e.target.value)}
+                    className="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-lg min-h-[120px] focus:outline-none focus:border-primary-500"
+                    rows={6}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="flex-1 glass-btn-secondary text-xs"
+                  >
+                    Skip Message
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirm}
+                    className="flex-1 glass-btn-primary text-xs"
+                  >
+                    <Check className="w-4 h-4" />
+                    Send Message
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TYPE: Confirm Email */}
+            {activePopup.type === 'confirm_email' && (
+              <div className="space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+                  <p><span className="font-bold text-slate-800">Recruiter:</span> {activePopup.recruiter_name} | <span className="font-bold text-slate-800">Email:</span> {activePopup.email}</p>
+                  <p><span className="font-bold text-slate-800">Job:</span> {activePopup.job_title} @ {activePopup.company}</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700">Email Subject:</label>
+                  <input
+                    type="text"
+                    value={editedEmailSubject}
+                    onChange={(e) => setEditedEmailSubject(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700">Email Body (Editable):</label>
+                  <textarea
+                    value={editedEmailBody}
+                    onChange={(e) => setEditedEmailBody(e.target.value)}
+                    className="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-lg min-h-[150px] focus:outline-none focus:border-primary-500"
+                    rows={8}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="flex-1 glass-btn-secondary text-xs"
+                  >
+                    Skip Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirm}
+                    className="flex-1 glass-btn-primary text-xs"
+                  >
+                    <Check className="w-4 h-4" />
+                    Send Email
+                  </button>
+                </div>
+              </div>
+            )}
+
 
             {/* TYPE 6: Review Submit */}
             {activePopup.type === 'review_submit' && (

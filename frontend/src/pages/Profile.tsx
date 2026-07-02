@@ -23,6 +23,9 @@ export const Profile: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
+  const [resumeHostedUrl, setResumeHostedUrl] = useState('');
+  const [isSavingResumeUrl, setIsSavingResumeUrl] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProfile = async () => {
@@ -43,6 +46,7 @@ export const Profile: React.FC = () => {
       setPortfolioUrl(res.data.portfolio_url || '');
       setCurrentTitle(res.data.current_title || '');
       setCurrentCompany(res.data.current_company || '');
+      setResumeHostedUrl(res.data.resume_hosted_url || '');
       
       if (res.data.resume_path) {
         setResumeName(res.data.resume_path.split(/[/\\]/).pop());
@@ -73,7 +77,8 @@ export const Profile: React.FC = () => {
       github_url: githubUrl,
       portfolio_url: portfolioUrl,
       current_title: currentTitle,
-      current_company: currentCompany
+      current_company: currentCompany,
+      resume_hosted_url: resumeHostedUrl
     };
 
     try {
@@ -83,6 +88,18 @@ export const Profile: React.FC = () => {
       alert('Failed to update profile.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveResumeUrl = async () => {
+    setIsSavingResumeUrl(true);
+    try {
+      await api.put('/api/profile', { resume_hosted_url: resumeHostedUrl });
+      alert('Hosted Resume link saved successfully!');
+    } catch (err) {
+      alert('Failed to save hosted resume link.');
+    } finally {
+      setIsSavingResumeUrl(false);
     }
   };
 
@@ -361,6 +378,34 @@ export const Profile: React.FC = () => {
             {isUploading && (
               <p className="text-[10px] text-primary-600 animate-pulse mt-3 font-semibold">Uploading resume...</p>
             )}
+          </div>
+
+          {/* Hosted Resume Link Widget */}
+          <div className="p-6 glass-panel border-slate-200 bg-white space-y-4">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary-600" />
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Hosted Resume Link</h3>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Provide a public link (Google Drive, OneDrive, Dropbox) to share with recruiters in automated outreach messages.
+            </p>
+            <div className="space-y-3">
+              <input
+                type="url"
+                placeholder="https://drive.google.com/..."
+                value={resumeHostedUrl}
+                onChange={(e) => setResumeHostedUrl(e.target.value)}
+                className="w-full glass-input text-xs"
+              />
+              <button 
+                type="button"
+                onClick={handleSaveResumeUrl}
+                disabled={isSavingResumeUrl}
+                className="w-full glass-btn-primary py-2.5 text-xs font-semibold"
+              >
+                {isSavingResumeUrl ? 'Saving Link...' : 'Save Hosted Link'}
+              </button>
+            </div>
           </div>
         </div>
 

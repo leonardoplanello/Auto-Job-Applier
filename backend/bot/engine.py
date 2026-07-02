@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from playwright.async_api import Page, Locator
 
 from backend.database import SessionLocal, DATA_DIR
-from backend.models import Job, SearchCriteria, Application, Session as SessionModel, Setting, Profile
+from backend.models import Job, SearchCriteria, Application, Session as SessionModel, Setting, Profile, RecruiterContact, ContactLog, MessageTemplate
 from backend.bot.session_manager import BrowserSession
 from backend.bot.job_discovery import discover_jobs
 from backend.bot.form_parser import parse_form, FormField, FieldType, is_placeholder_value
@@ -1870,7 +1870,14 @@ async def apply_to_job(
                     company=job.company, job_title=job.title, job_url=job.url, job_id=job.id
                 )
                 stats["applied"] += 1
+                
+                try:
+                    await process_hiring_team_followup(page, job, session_id, db, bot_settings)
+                except Exception as follow_err:
+                    log_event(session_id, "warning", "apply", f"Hiring team follow-up encountered an error: {str(follow_err)}", company=job.company, job_id=job.id)
+                    
                 return True
+
             else:
                 # No buttons found, stuck
                 raise Exception("No action button ('Next' or 'Submit') was found on the screen.")
@@ -2386,3 +2393,474 @@ def stop_bot():
         asyncio.create_task(update_status("stopped"))
         return "Session stopped."
     return "Bot is already idle."
+
+
+async def process_hiring_team_followup(page: Page, job: Job, session_id: str, db: Session, bot_settings: dict):
+    # 1. Scrape hiring team link(s)
+    # Check if connect_hiring_team is enabled.
+    connect_setting = db.query(Setting).filter(Setting.key == "connect_hiring_team").first()
+    if not connect_setting or connect_setting.value != "true":
+        return
+
+    log_event(session_id, "info", "apply", "Looking for hiring team recruiter details...", company=job.company, job_id=job.id)
+    
+    # Locate elements in the hiring team section
+    hiring_team_section = page.locator("section:has-text('Meet the hiring team'), section:has-text('hiring team'), div.jobs-premium-company-growth__hiring-team")
+    if await hiring_team_section.count() == 0:
+        log_event(session_id, "info", "apply", "No hiring team section found on the job details page.", company=job.company, job_id=job.id)
+        return
+
+    # Find the link to their profile
+    profile_links = hiring_team_section.locator("a[href*='/in/']")
+    link_count = await profile_links.count()
+    if link_count == 0:
+        log_event(session_id, "info", "apply", "No recruiter profiles found in the hiring team section.", company=job.company, job_id=job.id)
+        return
+
+    # Scrape recruiter links
+    recruiter_urls = []
+    for i in range(link_count):
+        href = await profile_links.nth(i).get_attribute("href")
+        if href:
+            if href.startswith("/"):
+                href = f"https://www.linkedin.com{href}"
+            # Clean up the url
+            href = href.split("?")[0].rstrip("/")
+            if href not in recruiter_urls:
+                recruiter_urls.append(href)
+
+    log_event(session_id, "info", "apply", f"Found {len(recruiter_urls)} potential recruiter profile(s).", company=job.company, job_id=job.id)
+
+    connected_urls = list(job.connected_profiles or [])
+
+    # Process each recruiter sequentially
+    for recruiter_url in recruiter_urls:
+        new_page = None
+        try:
+            log_event(session_id, "info", "apply", f"Processing recruiter profile: {recruiter_url}", company=job.company, job_id=job.id)
+            
+            # Open profile in a new tab
+            new_page = await page.context.new_page()
+            await new_page.goto(recruiter_url)
+            await new_page.wait_for_timeout(random.randint(3000, 5000))
+            
+            # Scrape name
+            name_el = new_page.locator("h1.text-heading-xlarge, h1.pv-text-details__left-panel-title, .pv-top-card-layout__title, h1[class*='inline-t-']").first
+            recruiter_name = "Recruiter"
+            if await name_el.is_visible():
+                raw_name = await name_el.inner_text()
+                if raw_name:
+                    recruiter_name = raw_name.strip()
+            
+            # Scrape connection degree
+            connection_status = "unknown"
+            top_card_text = ""
+            top_card_el = new_page.locator(".pv-text-details__left-panel, .pv-top-card-layout").first
+            if await top_card_el.is_visible():
+                top_card_text = await top_card_el.inner_text()
+            
+            if "1st" in top_card_text or "1º" in top_card_text:
+                connection_status = "1st"
+            elif "2nd" in top_card_text or "2º" in top_card_text:
+                connection_status = "2nd"
+            elif "3rd" in top_card_text or "3º" in top_card_text:
+                connection_status = "3rd"
+            
+            # Scrape Contact Info
+            email = None
+            phone = None
+            websites = []
+            
+            # Go to contact overlay
+            contact_url = f"{recruiter_url}/overlay/contact-info/"
+            await new_page.goto(contact_url)
+            await new_page.wait_for_timeout(random.randint(2000, 4000))
+            
+            # Scrape details from contact info overlay
+            email_el = new_page.locator("a[href^='mailto:']").first
+            if await email_el.is_visible():
+                email_href = await email_el.get_attribute("href")
+                if email_href:
+                    email = email_href.replace("mailto:", "").strip()
+            
+            # Scrape phone
+            phone_el = new_page.locator("section.ci-phone span, .ci-phone li").first
+            if await phone_el.is_visible():
+                phone = (await phone_el.inner_text()).strip()
+            
+            # Scrape websites
+            website_elements = new_page.locator("section.ci-websites a")
+            web_count = await website_elements.count()
+            for w_idx in range(web_count):
+                web_href = await website_elements.nth(w_idx).get_attribute("href")
+                if web_href:
+                    websites.append(web_href.strip())
+
+            log_event(session_id, "info", "apply", f"Scraped details for {recruiter_name}: Degree: {connection_status}, Email: {email}, Phone: {phone}", company=job.company, job_id=job.id)
+
+            # Check if this contact already exists in database, or create it
+            contact_db = db.query(RecruiterContact).filter(RecruiterContact.linkedin_url == recruiter_url).first()
+            if not contact_db:
+                contact_db = RecruiterContact(
+                    job_id=job.id,
+                    name=recruiter_name,
+                    linkedin_url=recruiter_url,
+                    email=email,
+                    phone=phone,
+                    websites=websites,
+                    connection_status=connection_status,
+                    company=job.company
+                )
+                db.add(contact_db)
+            else:
+                contact_db.job_id = job.id
+                contact_db.name = recruiter_name
+                contact_db.email = email or contact_db.email
+                contact_db.phone = phone or contact_db.phone
+                contact_db.websites = websites or contact_db.websites
+                contact_db.connection_status = connection_status
+                contact_db.company = job.company
+            db.commit()
+
+            # Now return to profile page
+            await new_page.goto(recruiter_url)
+            await new_page.wait_for_timeout(2000)
+
+            # Determine language based on job details
+            language = "en"
+            if job.location and any(p in job.location.lower() for p in ["brazil", "brasil", "portugal", "angola", "moçambique"]):
+                language = "pt"
+            elif job.description and any(w in job.description.lower() for w in ["requisitos", "benefícios", "experiência", "vaga", "contratação"]):
+                language = "pt"
+
+            profile_db = db.query(Profile).filter(Profile.id == 1).first()
+            candidate_name = f"{profile_db.first_name or ''} {profile_db.last_name or ''}".strip() or "Candidate"
+            resume_link = profile_db.resume_hosted_url or ""
+
+            # Extract recruiter's first name, cleaning common titles
+            recruiter_first_name = recruiter_name.strip()
+            if recruiter_first_name:
+                for title in ["mr.", "ms.", "mrs.", "dr.", "prof.", "eng."]:
+                    if recruiter_first_name.lower().startswith(title):
+                        recruiter_first_name = recruiter_first_name[len(title):].strip()
+                        break
+                recruiter_first_name = recruiter_first_name.split()[0]
+            if not recruiter_first_name:
+                recruiter_first_name = "Recruiter"
+
+            # ---------------- LINKEDIN MESSAGE STEP ----------------
+            weekly_limit_reached = False
+            is_non_connected = (connection_status != "1st")
+            if is_non_connected:
+                seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+                sent_count = db.query(ContactLog).filter(
+                    ContactLog.type == "linkedin_message",
+                    ContactLog.is_non_connected == True,
+                    ContactLog.sent_at >= seven_days_ago
+                ).count()
+                if sent_count >= 10:
+                    weekly_limit_reached = True
+                    log_event(session_id, "warning", "apply", f"Weekly message limit to non-connections reached ({sent_count}/10). Skipping LinkedIn message to {recruiter_name}.", company=job.company, job_id=job.id)
+
+            if not weekly_limit_reached:
+                # Find all active templates of type linkedin_message for the detected language
+                active_templates = db.query(MessageTemplate).filter(
+                    MessageTemplate.language == language,
+                    MessageTemplate.type == "linkedin_message",
+                    MessageTemplate.is_active == True
+                ).all()
+                
+                selected_template = None
+                if active_templates:
+                    selected_template = random.choice(active_templates)
+                    template_body = selected_template.body
+                else:
+                    template_body = (
+                        "Olá, {recruiter_first_name}. Acabei de me candidatar à vaga de {job} na {company} e gostaria de reforçar meu interesse. Possuo experiência relevante e gostaria de me conectar. Abraço!"
+                        if language == "pt" else
+                        "Hi {recruiter_first_name}, I just applied for the {job} position at {company} and wanted to express my enthusiasm. I'd love to connect and share how my background fits the role. Best!"
+                    )
+                
+                # Format variables safely
+                format_dict = {
+                    "recruiter_name": recruiter_name,
+                    "recruiter_first_name": recruiter_first_name,
+                    "job": job.title,
+                    "company": job.company,
+                    "candidate_name": candidate_name,
+                    "resume_link": resume_link
+                }
+                
+                def safe_format(text, data):
+                    for k, v in data.items():
+                        text = text.replace("{" + k + "}", str(v))
+                    return text
+
+                rendered_msg = safe_format(template_body, format_dict)
+
+                popup_payload = {
+                    "popup_id": str(uuid.uuid4()),
+                    "type": "confirm_message",
+                    "title": f"Send LinkedIn Message to {recruiter_name}",
+                    "company": job.company,
+                    "job_title": job.title,
+                    "recruiter_name": recruiter_name,
+                    "recruiter_url": recruiter_url,
+                    "connection_status": connection_status,
+                    "current_value": rendered_msg,
+                    "save": True
+                }
+
+                user_msg, should_send = await show_popup(popup_payload)
+
+                if should_send and user_msg != "__skip_job__" and user_msg != "__close_popup__":
+                    log_event(session_id, "info", "apply", f"Sending LinkedIn message to {recruiter_name}...", company=job.company, job_id=job.id)
+                    
+                    msg_sent = False
+                    message_btn = new_page.locator("button:has-text('Message'), button[aria-label^='Message']").first
+                    if await message_btn.is_visible():
+                        await message_btn.click()
+                        await new_page.wait_for_timeout(2000)
+                        
+                        textbox = new_page.locator("div[role='textbox'], div[contenteditable='true'], textarea").first
+                        if await textbox.is_visible():
+                            await textbox.focus()
+                            await type_human(textbox, user_msg)
+                            await new_page.wait_for_timeout(1000)
+                            
+                            send_btn = new_page.locator("button[type='submit'], button:has-text('Send')").first
+                            if await send_btn.is_visible():
+                                await send_btn.click()
+                                await new_page.wait_for_timeout(2000)
+                                msg_sent = True
+                                log_event(session_id, "success", "apply", f"Successfully sent LinkedIn message to {recruiter_name}!", company=job.company, job_id=job.id)
+                                
+                                new_log = ContactLog(
+                                    recruiter_id=contact_db.id,
+                                    job_id=job.id,
+                                    template_id=selected_template.id if selected_template else None,
+                                    type="linkedin_message",
+                                    status="sent",
+                                    body=user_msg,
+                                    is_non_connected=is_non_connected
+                                )
+                                db.add(new_log)
+                                db.commit()
+                                connected_urls.append(recruiter_url)
+                            else:
+                                log_event(session_id, "warning", "apply", "Send button not found in messaging overlay.", company=job.company, job_id=job.id)
+                        else:
+                            log_event(session_id, "warning", "apply", "Text entry box not found in LinkedIn messaging overlay.", company=job.company, job_id=job.id)
+                    else:
+                        log_event(session_id, "info", "apply", f"Direct message button not available. Sending connection request with note to {recruiter_name}.", company=job.company, job_id=job.id)
+                        connect_btn = new_page.locator("button:has-text('Connect'), button[aria-label^='Connect']").first
+                        if not await connect_btn.is_visible():
+                            more_btn = new_page.locator("button:has-text('More'), button[aria-label^='More']").first
+                            if await more_btn.is_visible():
+                                await more_btn.click()
+                                await new_page.wait_for_timeout(1000)
+                                connect_btn = new_page.locator("div.artdeco-dropdown__content button:has-text('Connect')").first
+                        
+                        if await connect_btn.is_visible():
+                            await connect_btn.click()
+                            await new_page.wait_for_timeout(1500)
+                            
+                            add_note_btn = new_page.locator("button:has-text('Add a note')").first
+                            if await add_note_btn.is_visible():
+                                await add_note_btn.click()
+                                await new_page.wait_for_timeout(1000)
+                                
+                                note_box = new_page.locator("textarea[name='message']").first
+                                if await note_box.is_visible():
+                                    short_msg = user_msg[:295]
+                                    await note_box.focus()
+                                    await type_human(note_box, short_msg)
+                                    await new_page.wait_for_timeout(1000)
+                                    
+                                    send_btn = new_page.locator("button:has-text('Send'), button:has-text('Send invitation')").first
+                                    if await send_btn.is_visible():
+                                        await send_btn.click()
+                                        await new_page.wait_for_timeout(2000)
+                                        msg_sent = True
+                                        log_event(session_id, "success", "apply", f"Successfully sent connection request with note to {recruiter_name}!", company=job.company, job_id=job.id)
+                                        
+                                        new_log = ContactLog(
+                                            recruiter_id=contact_db.id,
+                                            job_id=job.id,
+                                            template_id=selected_template.id if selected_template else None,
+                                            type="linkedin_message",
+                                            status="sent",
+                                            body=short_msg,
+                                            is_non_connected=is_non_connected
+                                        )
+                                        db.add(new_log)
+                                        db.commit()
+                                        connected_urls.append(recruiter_url)
+                        
+                    if not msg_sent:
+                        log_event(session_id, "warning", "apply", f"Could not message or connect with {recruiter_name} on LinkedIn (Premium lock or selector issue).", company=job.company, job_id=job.id)
+                        new_log = ContactLog(
+                            recruiter_id=contact_db.id,
+                            job_id=job.id,
+                            template_id=selected_template.id if selected_template else None,
+                            type="linkedin_message",
+                            status="failed",
+                            body=user_msg,
+                            is_non_connected=is_non_connected
+                        )
+                        db.add(new_log)
+                        db.commit()
+
+            # ---------------- GMAIL STEP ----------------
+            if email:
+                # Find active templates of type email for the language
+                active_templates_email = db.query(MessageTemplate).filter(
+                    MessageTemplate.language == language,
+                    MessageTemplate.type == "email",
+                    MessageTemplate.is_active == True
+                ).all()
+
+                selected_template_email = None
+                if active_templates_email:
+                    selected_template_email = random.choice(active_templates_email)
+                    email_sub = selected_template_email.subject
+                    email_body = selected_template_email.body
+                else:
+                    email_sub = "Candidatura: {job} - {candidate_name}" if language == "pt" else "Application: {job} - {candidate_name}"
+                    email_body = (
+                        "Prezado(a) {recruiter_name},\n\nEspero que este e-mail o(a) encontre bem.\n\nEscrevo para expressar meu interesse na vaga de {job} na {company}, para a qual acabei de me candidatar através do LinkedIn.\n\nFico à disposição para conversar e compartilhar mais detalhes.\n\nAtenciosamente,\n{candidate_name}"
+                        if language == "pt" else
+                        "Dear {recruiter_name},\n\nI hope this email finds you well.\n\nI am writing to express my strong interest in the {job} position at {company}, which I recently applied for via LinkedIn.\n\nI look forward to the possibility of discussing this opportunity further.\n\nBest regards,\n{candidate_name}"
+                    )
+
+                format_dict = {
+                    "recruiter_name": recruiter_name,
+                    "recruiter_first_name": recruiter_first_name,
+                    "job": job.title,
+                    "company": job.company,
+                    "candidate_name": candidate_name,
+                    "resume_link": resume_link
+                }
+
+                rendered_sub = safe_format(email_sub or "Application", format_dict)
+                rendered_body_email = safe_format(email_body, format_dict)
+
+                popup_payload_email = {
+                    "popup_id": str(uuid.uuid4()),
+                    "type": "confirm_email",
+                    "title": f"Send Follow-up Email to {recruiter_name}",
+                    "company": job.company,
+                    "job_title": job.title,
+                    "recruiter_name": recruiter_name,
+                    "email": email,
+                    "subject": rendered_sub,
+                    "current_value": rendered_body_email,
+                    "save": True
+                }
+
+                edited_body, should_send_email = await show_popup(popup_payload_email)
+
+                user_email_sub = rendered_sub
+                user_email_body = edited_body
+
+                if isinstance(edited_body, dict):
+                    user_email_sub = edited_body.get("subject", rendered_sub)
+                    user_email_body = edited_body.get("body", "")
+
+                if should_send_email and edited_body != "__skip_job__" and edited_body != "__close_popup__":
+                    log_event(session_id, "info", "apply", f"Automating Gmail compose flow to {email}...", company=job.company, job_id=job.id)
+                    
+                    gmail_page = await new_page.context.new_page()
+                    try:
+                        await gmail_page.goto("https://mail.google.com/")
+                        await gmail_page.wait_for_timeout(3000)
+                        
+                        if "signin" in gmail_page.url or await gmail_page.locator("input[type='email'], a:has-text('Sign in')").first.is_visible():
+                            log_event(session_id, "warning", "apply", "Gmail is not logged in. Pausing for user login...", company=job.company, job_id=job.id)
+                            login_payload = {
+                                "popup_id": str(uuid.uuid4()),
+                                "type": "manual_action",
+                                "title": "Log in to Gmail",
+                                "message": "Please log in to your Google Account in the opened Chrome browser window. Once you are logged in and see your inbox, click 'Continue' here.",
+                                "save": False
+                            }
+                            await show_popup(login_payload)
+                            await gmail_page.wait_for_timeout(3000)
+                        
+                        await gmail_page.goto("https://mail.google.com/mail/u/0/#inbox?compose=new")
+                        await gmail_page.wait_for_timeout(4000)
+                        
+                        to_selector = "input[aria-label*='To'], input[aria-label*='Para'], input[placeholder*='Recipients'], textarea[aria-label*='To']"
+                        subject_selector = "input[name='subjectbox'], input[placeholder='Subject'], input[placeholder='Assunto']"
+                        body_selector = "div[role='textbox'][aria-label*='Message Body'], div[role='textbox'][aria-label*='Corpo da mensagem'], div[role='textbox']"
+                        
+                        to_field = gmail_page.locator(to_selector).first
+                        await to_field.wait_for(state="visible", timeout=15000)
+                        await to_field.focus()
+                        await type_human(to_field, email)
+                        await gmail_page.keyboard.press("Enter")
+                        await gmail_page.wait_for_timeout(1000)
+                        
+                        sub_field = gmail_page.locator(subject_selector).first
+                        await sub_field.focus()
+                        await type_human(sub_field, user_email_sub)
+                        await gmail_page.wait_for_timeout(1000)
+                        
+                        body_field = gmail_page.locator(body_selector).first
+                        await body_field.focus()
+                        await type_human(body_field, user_email_body)
+                        await gmail_page.wait_for_timeout(1500)
+                        
+                        send_selector = "div[role='button']:has-text('Send'), div[role='button']:has-text('Enviar'), div[aria-label*='Send'], div[aria-label*='Enviar']"
+                        send_btn = gmail_page.locator(send_selector).first
+                        await send_btn.click()
+                        await gmail_page.wait_for_timeout(3000)
+                        
+                        log_event(session_id, "success", "apply", f"Successfully sent follow-up email to {email}!", company=job.company, job_id=job.id)
+                        
+                        new_log = ContactLog(
+                            recruiter_id=contact_db.id,
+                            job_id=job.id,
+                            template_id=selected_template_email.id if selected_template_email else None,
+                            type="email",
+                            status="sent",
+                            subject=user_email_sub,
+                            body=user_email_body,
+                            is_non_connected=False
+                        )
+                        db.add(new_log)
+                        db.commit()
+                        
+                    except Exception as gmail_err:
+                        log_event(session_id, "error", "apply", f"Failed to automate email sending: {str(gmail_err)}", company=job.company, job_id=job.id)
+                        new_log = ContactLog(
+                            recruiter_id=contact_db.id,
+                            job_id=job.id,
+                            template_id=selected_template_email.id if selected_template_email else None,
+                            type="email",
+                            status="failed",
+                            subject=user_email_sub,
+                            body=user_email_body,
+                            is_non_connected=False
+                        )
+                        db.add(new_log)
+                        db.commit()
+                    finally:
+                        if not gmail_page.is_closed():
+                            await gmail_page.close()
+
+
+            # Close recruiter profile page tab
+            if not new_page.is_closed():
+                await new_page.close()
+
+        except Exception as recruiter_err:
+            log_event(session_id, "warning", "apply", f"Error processing recruiter {recruiter_url}: {str(recruiter_err)}", company=job.company, job_id=job.id)
+        finally:
+            if new_page and not new_page.is_closed():
+                await new_page.close()
+
+    if connected_urls:
+        job.connected_profiles = connected_urls
+        db.commit()
+

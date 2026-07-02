@@ -11,9 +11,10 @@ import { QABank } from './pages/QABank';
 import { Logs } from './pages/Logs';
 import { Settings } from './pages/Settings';
 import { Analytics } from './pages/Analytics';
+import { Connections } from './pages/Connections';
 import { 
   LayoutDashboard, Search, Briefcase, CheckCircle2, MessageSquare, 
-  Terminal, Settings as SettingsIcon, Power, Network, ListOrdered
+  Terminal, Settings as SettingsIcon, Power, Network, ListOrdered, Users
 } from 'lucide-react';
 import api from './lib/api';
 import { useBot, type PageName } from './hooks/useBot';
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
       case 'logs': return <Logs />;
       case 'settings': return <Settings />;
       case 'analytics': return <Analytics />;
+      case 'connections': return <Connections />;
       default: return <Dashboard />;
     }
   };
@@ -58,6 +60,7 @@ export const App: React.FC = () => {
     { name: 'search', label: 'Search Criteria', icon: <Search className="w-5 h-5" /> },
     { name: 'jobs', label: 'Jobs', icon: <Briefcase className="w-5 h-5" /> },
     { name: 'applications', label: 'Applications', icon: <CheckCircle2 className="w-5 h-5" /> },
+    { name: 'connections', label: 'Connections', icon: <Users className="w-5 h-5" /> },
     { name: 'qa', label: 'Q&A Bank', icon: <MessageSquare className="w-5 h-5" /> },
     { name: 'logs', label: 'Logs & Sessions', icon: <Terminal className="w-5 h-5" /> },
     { name: 'analytics', label: 'Flow Analytics', icon: <Network className="w-5 h-5" /> },

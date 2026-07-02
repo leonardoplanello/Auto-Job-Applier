@@ -71,6 +71,28 @@ def run_migrations():
                             except Exception as e:
                                 print(f"Error migrating location for id {sc_id}: {e}")
                     conn.commit()
+            
+            # Migrate profile table
+            cursor.execute("PRAGMA table_info(profile)")
+            profile_columns = [row[1] for row in cursor.fetchall()]
+            if profile_columns and "resume_hosted_url" not in profile_columns:
+                cursor.execute("ALTER TABLE profile ADD COLUMN resume_hosted_url TEXT")
+                conn.commit()
+
+            # Migrate contact_logs table
+            cursor.execute("PRAGMA table_info(contact_logs)")
+            cl_columns = [row[1] for row in cursor.fetchall()]
+            if cl_columns and "template_id" not in cl_columns:
+                cursor.execute("ALTER TABLE contact_logs ADD COLUMN template_id INTEGER")
+                conn.commit()
+
+            # Migrate message_templates table
+            cursor.execute("PRAGMA table_info(message_templates)")
+            mt_columns = [row[1] for row in cursor.fetchall()]
+            if mt_columns and "is_active" not in mt_columns:
+                cursor.execute("ALTER TABLE message_templates ADD COLUMN is_active BOOLEAN DEFAULT 1")
+                conn.commit()
+
         except Exception as e:
             print(f"Migration error: {e}")
         finally:
@@ -86,3 +108,45 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def seed_default_templates():
+    from backend.models import MessageTemplate
+    db = SessionLocal()
+    try:
+        if db.query(MessageTemplate).count() == 0:
+            templates = [
+                MessageTemplate(
+                    name="LinkedIn Message (Portuguese)",
+                    language="pt",
+                    type="linkedin_message",
+                    body="Olá, {recruiter_name}. Acabei de me candidatar à vaga de {job} na {company} e gostaria de reforçar meu interesse. Possuo experiência relevante e gostaria de me conectar. Abraço!"
+                ),
+                MessageTemplate(
+                    name="Email (Portuguese)",
+                    language="pt",
+                    type="email",
+                    subject="Candidatura: {job} - {candidate_name}",
+                    body="Prezado(a) {recruiter_name},\n\nEspero que este e-mail o(a) encontre bem.\n\nEscrevo para expressar meu interesse na vaga de {job} na {company}, para a qual acabei de me candidatar através do LinkedIn.\n\nVocê pode visualizar meu currículo atualizado por meio deste link:\n{resume_link}\n\nFico à disposição para conversar e compartilhar mais detalhes.\n\nAtenciosamente,\n{candidate_name}"
+                ),
+                MessageTemplate(
+                    name="LinkedIn Message (English)",
+                    language="en",
+                    type="linkedin_message",
+                    body="Hi {recruiter_name}, I just applied for the {job} position at {company} and wanted to express my enthusiasm. I'd love to connect and share how my background fits the role. Best!"
+                ),
+                MessageTemplate(
+                    name="Email (English)",
+                    language="en",
+                    type="email",
+                    subject="Application: {job} - {candidate_name}",
+                    body="Dear {recruiter_name},\n\nI hope this email finds you well.\n\nI am writing to express my strong interest in the {job} position at {company}, which I recently applied for via LinkedIn.\n\nYou can review my updated resume here:\n{resume_link}\n\nI look forward to the possibility of discussing this opportunity further.\n\nBest regards,\n{candidate_name}"
+                )
+            ]
+            db.add_all(templates)
+            db.commit()
+    except Exception as e:
+        print(f"Seeding error: {e}")
+    finally:
+        db.close()
+

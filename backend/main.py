@@ -1,11 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from backend.database import engine, Base
+from backend.database import engine, Base, seed_default_templates
 from backend.services.logger import manager
-from backend.routers import profile, search, jobs, applications, qa, logs, settings, bot
+from backend.routers import profile, search, jobs, applications, qa, logs, settings, bot, connections
 
 # Initialize Database tables
 Base.metadata.create_all(bind=engine)
+seed_default_templates()
+
 
 app = FastAPI(
     title="Auto J*b Applier API",
@@ -34,6 +36,8 @@ app.include_router(qa.router)
 app.include_router(logs.router)
 app.include_router(settings.router)
 app.include_router(bot.router)
+app.include_router(connections.router)
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -52,6 +56,14 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception:
         manager.disconnect(websocket)
 
+@app.get("/api/health")
+def read_root():
+    return {
+        "app": "Auto J*b Applier",
+        "status": "online",
+        "documentation": "/docs"
+    }
+
 # Mount compiled React frontend static files
 dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "frontend", "dist"))
 if not os.path.exists(dist_path):
@@ -60,11 +72,3 @@ if not os.path.exists(dist_path):
 
 if os.path.exists(dist_path):
     app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
-
-@app.get("/api/health")
-def read_root():
-    return {
-        "app": "Auto J*b Applier",
-        "status": "online",
-        "documentation": "/docs"
-    }

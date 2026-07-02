@@ -16,6 +16,7 @@ class ProfileBase(BaseModel):
     linkedin_url: Optional[str] = None
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
+    resume_hosted_url: Optional[str] = None
     current_title: Optional[str] = None
     current_company: Optional[str] = None
 
@@ -180,3 +181,81 @@ class BotAnswerPayload(BaseModel):
     popup_id: str
     answer: Any
     save: bool = True
+
+
+# RecruiterContact Schemas
+class RecruiterContactBase(BaseModel):
+    job_id: Optional[int] = None
+    name: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    websites: Optional[List[str]] = []
+    connection_status: Optional[str] = "unknown"
+    company: Optional[str] = None
+    notes: Optional[str] = None
+
+class RecruiterContactUpdate(BaseModel):
+    name: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    websites: Optional[List[str]] = None
+    connection_status: Optional[str] = None
+    company: Optional[str] = None
+    notes: Optional[str] = None
+
+class RecruiterContactResponse(RecruiterContactBase):
+    id: int
+    discovered_at: datetime.datetime
+    updated_at: datetime.datetime
+    job: Optional[JobResponse] = None
+    model_config = ConfigDict(from_attributes=True)
+
+# ContactLog Schemas
+class ContactLogResponse(BaseModel):
+    id: int
+    recruiter_id: Optional[int] = None
+    job_id: Optional[int] = None
+    template_id: Optional[int] = None
+    type: str
+    status: str
+    subject: Optional[str] = None
+    body: str
+    sent_at: datetime.datetime
+    is_non_connected: bool
+    recruiter: Optional[RecruiterContactResponse] = None
+    job: Optional[JobResponse] = None
+    model_config = ConfigDict(from_attributes=True)
+
+# MessageTemplate Schemas
+class MessageTemplateBase(BaseModel):
+    name: str
+    language: str
+    type: str
+    subject: Optional[str] = None
+    body: str
+    is_active: bool = True
+
+class MessageTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    language: Optional[str] = None
+    type: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class MessageTemplateResponse(MessageTemplateBase):
+    id: int
+    used_day: Optional[int] = 0
+    used_week: Optional[int] = 0
+    used_month: Optional[int] = 0
+    used_all: Optional[int] = 0
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class ConnectionStats(BaseModel):
+    weekly_non_connected_sent: int
+    weekly_non_connected_limit: int = 10
+

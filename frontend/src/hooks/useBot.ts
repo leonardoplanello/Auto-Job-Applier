@@ -34,7 +34,7 @@ export interface LogEntry {
 
 export interface PopupPayload {
   popup_id: string;
-  type: 'manual_action' | 'question_text' | 'question_select' | 'question_number' | 'confirm' | 'review_submit' | 'question_file' | 'question_checkbox';
+  type: 'manual_action' | 'question_text' | 'question_select' | 'question_number' | 'confirm' | 'review_submit' | 'question_file' | 'question_checkbox' | 'confirm_message' | 'confirm_email';
   title: string;
   message?: string;
   action_label?: string;
@@ -52,6 +52,11 @@ export interface PopupPayload {
   fields?: any[];
   current_value?: string | number;
   error_message?: string;
+  recruiter_name?: string;
+  recruiter_url?: string;
+  connection_status?: string;
+  email?: string;
+  subject?: string;
 }
 
 interface BotStats {
@@ -62,7 +67,7 @@ interface BotStats {
   popups: number;
 }
 
-export type PageName = 'dashboard' | 'tasks' | 'search' | 'jobs' | 'applications' | 'qa' | 'logs' | 'settings' | 'analytics';
+export type PageName = 'dashboard' | 'tasks' | 'search' | 'jobs' | 'applications' | 'qa' | 'logs' | 'settings' | 'analytics' | 'connections';
 
 interface BotStore {
   status: string;
